@@ -1,4 +1,4 @@
-from urllib.parse import quote
+from datetime import datetime
 
 # SUNSPOT NUMBERS
 swpc_json_observed_solar_cycle = {
@@ -115,8 +115,29 @@ def GetLatest48hVideoUrl (frequency=default_frequency):
         return f"https://sdo.gsfc.nasa.gov/data/latest48.php?q={frequency}"
     else: return None
 
+# CME
+nasa_html_cme_catalog = {
+    "source": "nasa",
+    "format": "html",
+    "name": "cme_catalog_html",
+    "url": "https://cdaw.gsfc.nasa.gov/CME_list/"
+}
+
+nasa_txt_cme_catalog = {
+    "source": "nasa",
+    "format": "txt",
+    "name": "cme_catalog_text",
+    "url": "https://cdaw.gsfc.nasa.gov/CME_list/UNIVERSAL_ver2/text_ver/"
+}
+
+def GetDailyCMEMovieUrl(date=datetime.today()):
+    date = date.strftime('%Y/%m/%d')
+    return f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}" # Later on: Crawl links from this page
+
 if __name__ == '__main__':
     print(GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True))
     print(GetLatestSunImageUrl("512", "0193", True))
     print(GetLatestSunImageUrl(frequency=dict_frequencies.get("AIA 1700 Å")))
     print(GetLatest48hVideoUrl())
+    print(GetDailyCMEMovieUrl(datetime.strptime('Aug 17 2025', '%b %d %Y')))
+    print(GetDailyCMEMovieUrl())
