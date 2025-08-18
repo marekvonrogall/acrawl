@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 # SUNSPOT NUMBERS
 swpc_json_observed_solar_cycle = {
     "source": "swpc",
@@ -80,5 +82,41 @@ gfz_txt_century_kpindex_detailed = {
     "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_since_1932.txt"
 }
 
+# DAILY SUN IMAGES
+dict_frequencies = {
+    "AIA 193 Å": "0193",
+    "AIA 304 Å": "0304",
+    "AIA 171 Å": "0171",
+    "AIA 211 Å": "0211",
+    "AIA 131 Å": "0131",
+    "AIA 335 Å": "0335",
+    "AIA 094 Å": "0094",
+    "AIA 1600 Å": "1600",
+    "AIA 1700 Å": "1700"
+}
+default_frequency = dict_frequencies.get("AIA 171 Å")
+
+dict_resolutions = {
+    "512x512px": "512",
+    "1024x1024px": "1024",
+    "2048x2048px": "2048",
+    "4096x4096px": "4096",
+}
+default_resolution = dict_resolutions.get("1024x1024px")
+
+def GetLatestSunImageUrl (resolution=default_resolution, frequency=default_frequency, pfss=False):
+    if frequency in dict_frequencies.values() and resolution in dict_resolutions.values():
+        str_pfss = "pfss" if pfss else ""
+        return f"https://sdo.gsfc.nasa.gov/assets/img/latest/latest_{resolution}_{frequency}{str_pfss}.jpg"
+    else: return None
+
+def GetLatest48hVideoUrl (frequency=default_frequency):
+    if frequency in dict_frequencies.values():
+        return f"https://sdo.gsfc.nasa.gov/data/latest48.php?q={frequency}"
+    else: return None
+
 if __name__ == '__main__':
-    pass
+    print(GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True))
+    print(GetLatestSunImageUrl("512", "0193", True))
+    print(GetLatestSunImageUrl(frequency=dict_frequencies.get("AIA 1700 Å")))
+    print(GetLatest48hVideoUrl())
