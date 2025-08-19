@@ -1,10 +1,12 @@
-from datetime import datetime
-import requests
 from bs4 import BeautifulSoup
-import re
+from datetime import datetime
+from urllib.request import urlretrieve
 import os
+import re
+import requests
 
 session = requests.Session()
+BASE_DIR = "data"
 
 def fetch_url(url):
     response = session.get(url, timeout=5)
@@ -99,7 +101,7 @@ data_cme = [
         "source": "nasa", "format": "html", "name": "cme_catalog_html",
         "url": "https://cdaw.gsfc.nasa.gov/CME_list/"
     }, {
-        "source": "nasa", "format": "txt", "name": "cme_catalog_text",
+        "source": "nasa", "format": "html", "name": "cme_catalog_text",
         "url": "https://cdaw.gsfc.nasa.gov/CME_list/UNIVERSAL_ver2/text_ver/"
     }
 ]
@@ -182,8 +184,7 @@ def CrawlDailyCMEMovieFrames(cme_movie_pages):
 
 # DIRECTORIES
 def CreateDataDirectories(*args):
-    base_dir = "data"
-    os.makedirs(base_dir, exist_ok=True)
+    os.makedirs(BASE_DIR, exist_ok=True)
 
     sources = set()
     for arg in args:
@@ -191,11 +192,18 @@ def CreateDataDirectories(*args):
             sources.add(data_item["source"])
 
     for source in sources:
-        source_dir = os.path.join(base_dir, source)
+        source_dir = os.path.join(BASE_DIR, source)
         os.makedirs(source_dir, exist_ok=True)
 
+def DownloadData(*args):
+    CreateDataDirectories(*args)
+    for arg in args:
+        for data_item in arg:
+            print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]}...")
+            urlretrieve(data_item["url"], os.path.join(BASE_DIR, data_item["source"], f"{data_item["name"]}.{data_item["format"]}"))
+
 if __name__ == '__main__':
-    CreateDataDirectories(data_sunspots, data_kp_index, data_cme)
+    DownloadData(data_sunspots, data_kp_index, data_cme)
     print(f"Latest sun image: {GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True)}")
     print(f"Latest 48h video: {GetLatest48hVideoUrl()}")
     cme_daily_movie_pages = CrawlDailyCMEMoviePage(datetime.strptime("Aug 17 2025", "%b %d %Y"))
