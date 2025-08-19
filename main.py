@@ -1,4 +1,13 @@
 from datetime import datetime
+import requests
+from bs4 import BeautifulSoup
+
+session = requests.Session()
+
+def fetch_url(url):
+    response = session.get(url, timeout=5)
+    response.raise_for_status()
+    return response
 
 # SUNSPOT NUMBERS
 swpc_json_observed_solar_cycle = {
@@ -132,7 +141,20 @@ nasa_txt_cme_catalog = {
 
 def GetDailyCMEMovieUrl(date=datetime.today()):
     date = date.strftime('%Y/%m/%d')
-    return f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}" # Later on: Crawl links from this page
+    return f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}"
+
+def CrawlDailyCMEMoviePage(date=datetime.today()):
+    daily_cme_movie_url = GetDailyCMEMovieUrl(date)
+    daily_cme_movie_pages = []
+    try:
+        response = fetch_url(daily_cme_movie_url)
+        soup = BeautifulSoup(response.text, "html.parser")
+        for a in soup('a', href=True):
+            url = f"{daily_cme_movie_url}/{a['href']}"
+            if url.endswith(".html"): daily_cme_movie_pages.append(url)
+    except requests.exceptions.RequestException as e:
+        print(e)
+    return daily_cme_movie_pages
 
 if __name__ == '__main__':
     print(GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True))
@@ -140,4 +162,4 @@ if __name__ == '__main__':
     print(GetLatestSunImageUrl(frequency=dict_frequencies.get("AIA 1700 Å")))
     print(GetLatest48hVideoUrl())
     print(GetDailyCMEMovieUrl(datetime.strptime('Aug 17 2025', '%b %d %Y')))
-    print(GetDailyCMEMovieUrl())
+    print(CrawlDailyCMEMoviePage(datetime.strptime('Aug 17 2025', '%b %d %Y')))
