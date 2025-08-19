@@ -1,3 +1,5 @@
+from os import sysconf_names
+
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.request import urlretrieve
@@ -5,16 +7,16 @@ import os
 import re
 import requests
 
-session = requests.Session()
+SESSION = requests.Session()
 BASE_DIR = "data"
 
 def fetch_url(url):
-    response = session.get(url, timeout=5)
+    response = SESSION.get(url, timeout=5)
     response.raise_for_status()
     return response
 
 # SUNSPOT NUMBERS
-data_sunspots = [
+DATA_SUNSPOTS = [
     {
         "source": "swpc", "format": "json", "name": "observed_solar_cycle",
         "url": "https://services.swpc.noaa.gov/json/solar-cycle/observed-solar-cycle-indices.json"
@@ -40,7 +42,7 @@ data_sunspots = [
 ]
 
 # KP-INDEX
-data_kp_index = [
+DATA_KP_INDEX = [
     {
         "source": "swpc", "format": "json", "name": "week_kp-index",
         "url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
@@ -62,8 +64,8 @@ data_kp_index = [
     }
 ]
 
-# DAILY SUN IMAGES
-dict_frequencies = {
+# DAILY SUN IMAGES / 48h VIDEOS
+DICT_FREQUENCIES = {
     "AIA 193 Å": "0193",
     "AIA 304 Å": "0304",
     "AIA 171 Å": "0171",
@@ -74,29 +76,59 @@ dict_frequencies = {
     "AIA 1600 Å": "1600",
     "AIA 1700 Å": "1700"
 }
-default_frequency = dict_frequencies.get("AIA 171 Å")
+DEFAULT_FREQUENCY = DICT_FREQUENCIES.get("AIA 171 Å")
 
-dict_resolutions = {
+DICT_RESOLUTIONS = {
     "512x512px": "512",
     "1024x1024px": "1024",
     "2048x2048px": "2048",
     "4096x4096px": "4096",
 }
-default_resolution = dict_resolutions.get("1024x1024px")
+DEFAULT_RESOLUTION = DICT_RESOLUTIONS.get("1024x1024px")
 
-def GetLatestSunImageUrl (resolution=default_resolution, frequency=default_frequency, pfss=False):
-    if frequency in dict_frequencies.values() and resolution in dict_resolutions.values():
+DICT_CORNERS = {
+    "Full": "",
+    "CloseUp": "NC_",
+    "North West": "NW_",
+    "North East": "NE_",
+    "South West": "SW_",
+    "South East": "SE_",
+}
+DEFAULT_CORNER = DICT_CORNERS.get("Full")
+
+def GetLatestSunImageUrl (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FREQUENCY, pfss=False):
+    if frequency in DICT_FREQUENCIES.values() and resolution in DICT_RESOLUTIONS.values():
         str_pfss = "pfss" if pfss else ""
-        return f"https://sdo.gsfc.nasa.gov/assets/img/latest/latest_{resolution}_{frequency}{str_pfss}.jpg"
+        latest_url = f"https://sdo.gsfc.nasa.gov/assets/img/latest/latest_{resolution}_{frequency}{str_pfss}.jpg"
+        filename = f"latest_{datetime.today().strftime("%Y-%m-%d")}_{resolution}_{frequency}{str_pfss}"
+
+        return {
+            "source": "nasa",
+            "format": "jpg",
+            "name": filename,
+            "url": latest_url
+        }
     else: return None
 
-def GetLatest48hVideoUrl (frequency=default_frequency):
-    if frequency in dict_frequencies.values():
-        return f"https://sdo.gsfc.nasa.gov/data/latest48.php?q={frequency}"
+def GetLatest48hVideoUrl (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FREQUENCY, corner=DEFAULT_CORNER, synoptic=False):
+    if corner != DEFAULT_CORNER:
+        resolution = DICT_RESOLUTIONS.get("1024x1024px")
+        synoptic = False
+    if frequency in DICT_FREQUENCIES.values() and corner in DICT_CORNERS.values() and (resolution == DICT_RESOLUTIONS.get("512x512px") or resolution == DICT_RESOLUTIONS.get("1024x1024px")):
+        str_synoptic = "_synoptic" if synoptic else ""
+        latest48_url = f"https://sdo.gsfc.nasa.gov/assets/img/latest/mpeg/latest_{resolution}_{corner}{frequency}{str_synoptic}.mp4"
+        filename = f"latest48_{datetime.today().strftime("%Y-%m-%d")}_{resolution}_{corner}{frequency}{str_synoptic}"
+
+        return {
+            "source": "nasa",
+            "format": "mp4",
+            "name": filename,
+            "url": latest48_url
+        }
     else: return None
 
 # CME
-data_cme = [
+DATA_CME = [
     {
         "source": "nasa", "format": "html", "name": "cme_catalog_html",
         "url": "https://cdaw.gsfc.nasa.gov/CME_list/"
@@ -196,16 +228,22 @@ def CreateDataDirectories(*args):
         os.makedirs(source_dir, exist_ok=True)
 
 def DownloadData(*args):
-    CreateDataDirectories(*args)
     for arg in args:
-        for data_item in arg:
+        if isinstance(arg, dict):
+            items = [arg]
+        elif isinstance(arg, (list, tuple)):
+            items = arg
+        else: raise TypeError
+        CreateDataDirectories(items)
+        for data_item in items:
             print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]}...")
             urlretrieve(data_item["url"], os.path.join(BASE_DIR, data_item["source"], f"{data_item["name"]}.{data_item["format"]}"))
 
 if __name__ == '__main__':
-    DownloadData(data_sunspots, data_kp_index, data_cme)
-    print(f"Latest sun image: {GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True)}")
-    print(f"Latest 48h video: {GetLatest48hVideoUrl()}")
+    DownloadData(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
+    DownloadData(GetLatestSunImageUrl(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
+    DownloadData(GetLatest48hVideoUrl(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
+    DownloadData(GetLatest48hVideoUrl(DICT_RESOLUTIONS.get("512x512px"),DICT_FREQUENCIES.get("AIA 304 Å"),DICT_CORNERS.get("CloseUp"),False))
     cme_daily_movie_pages = CrawlDailyCMEMoviePage(datetime.strptime("Aug 17 2025", "%b %d %Y"))
     cme_movie_frames = CrawlDailyCMEMovieFrames(cme_daily_movie_pages)
 
