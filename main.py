@@ -2,6 +2,7 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 import re
+import os
 
 session = requests.Session()
 
@@ -179,11 +180,24 @@ def CrawlDailyCMEMovieFrames(cme_movie_pages):
 
     return cme_movie_frames
 
+# DIRECTORIES
+def CreateDataDirectories(*args):
+    base_dir = "data"
+    os.makedirs(base_dir, exist_ok=True)
+
+    sources = set()
+    for arg in args:
+        for data_item in arg:
+            sources.add(data_item["source"])
+
+    for source in sources:
+        source_dir = os.path.join(base_dir, source)
+        os.makedirs(source_dir, exist_ok=True)
+
 if __name__ == '__main__':
-    print(GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True))
-    print(GetLatestSunImageUrl("512", "0193", True))
-    print(GetLatestSunImageUrl(frequency=dict_frequencies.get("AIA 1700 Å")))
-    print(GetLatest48hVideoUrl())
+    CreateDataDirectories(data_sunspots, data_kp_index, data_cme)
+    print(f"Latest sun image: {GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True)}")
+    print(f"Latest 48h video: {GetLatest48hVideoUrl()}")
     cme_daily_movie_pages = CrawlDailyCMEMoviePage(datetime.strptime("Aug 17 2025", "%b %d %Y"))
     cme_movie_frames = CrawlDailyCMEMovieFrames(cme_daily_movie_pages)
 
@@ -194,7 +208,7 @@ if __name__ == '__main__':
             "name": page["name"],
             "url": {
                 "page": page["url"]["page"],
-                "jfiles1": page["url"]["jfiles1"][:2],
-                "jfiles2": page["url"]["jfiles2"][:2]
+                "jfiles1": f"{len(page["url"]["jfiles1"])} entries",
+                "jfiles2": f"{len(page["url"]["jfiles2"])} entries"
             }
         })
