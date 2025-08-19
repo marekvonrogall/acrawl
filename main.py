@@ -1,5 +1,3 @@
-from os import sysconf_names
-
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.request import urlretrieve
@@ -96,7 +94,7 @@ DICT_CORNERS = {
 }
 DEFAULT_CORNER = DICT_CORNERS.get("Full")
 
-def GetLatestSunImageUrl (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FREQUENCY, pfss=False):
+def get_latest_sun_image_url (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FREQUENCY, pfss=False):
     if frequency in DICT_FREQUENCIES.values() and resolution in DICT_RESOLUTIONS.values():
         str_pfss = "pfss" if pfss else ""
         latest_url = f"https://sdo.gsfc.nasa.gov/assets/img/latest/latest_{resolution}_{frequency}{str_pfss}.jpg"
@@ -110,7 +108,7 @@ def GetLatestSunImageUrl (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FREQU
         }
     else: return None
 
-def GetLatest48hVideoUrl (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FREQUENCY, corner=DEFAULT_CORNER, synoptic=False):
+def get_latest48h_video_url (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FREQUENCY, corner=DEFAULT_CORNER, synoptic=False):
     if corner != DEFAULT_CORNER:
         resolution = DICT_RESOLUTIONS.get("1024x1024px")
         synoptic = False
@@ -138,7 +136,7 @@ DATA_CME = [
     }
 ]
 
-def GetDailyCMEMovieUrl(date=datetime.today()):
+def get_daily_cme_movie_url(date=datetime.today()):
     date = date.strftime("%Y/%m/%d")
     return {
         "source": "nasa",
@@ -147,8 +145,8 @@ def GetDailyCMEMovieUrl(date=datetime.today()):
         "url": f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}"
     }
 
-def CrawlDailyCMEMoviePage(date=datetime.today()):
-    daily_cme_movie = GetDailyCMEMovieUrl(date)
+def crawl_daily_cme_movie_pages(date=datetime.today()):
+    daily_cme_movie = get_daily_cme_movie_url(date)
     daily_cme_movie_url = daily_cme_movie["url"]
     daily_cme_movie_pages = []
     try:
@@ -167,14 +165,15 @@ def CrawlDailyCMEMoviePage(date=datetime.today()):
     except requests.exceptions.RequestException as e:
         print(e)
 
-    return {
+    cme_daily_movie_pages = {
         "source": daily_cme_movie["source"],
         "format": "url",
         "name": "daily_cme_movie_urls",
         "url": daily_cme_movie_pages
     }
+    return crawl_daily_cme_movie_frames(cme_daily_movie_pages)
 
-def CrawlDailyCMEMovieFrames(cme_movie_pages):
+def crawl_daily_cme_movie_frames(cme_movie_pages):
     cme_movie_frames = []
 
     for page in cme_movie_pages["url"]:
@@ -215,7 +214,7 @@ def CrawlDailyCMEMovieFrames(cme_movie_pages):
     return cme_movie_frames
 
 # DIRECTORIES
-def CreateDataDirectories(*args):
+def create_data_directories(*args):
     os.makedirs(BASE_DIR, exist_ok=True)
 
     sources = set()
@@ -227,34 +226,33 @@ def CreateDataDirectories(*args):
         source_dir = os.path.join(BASE_DIR, source)
         os.makedirs(source_dir, exist_ok=True)
 
-def DownloadData(*args):
+def download_data(*args):
     for arg in args:
         if isinstance(arg, dict):
             items = [arg]
         elif isinstance(arg, (list, tuple)):
             items = arg
         else: raise TypeError
-        CreateDataDirectories(items)
+        create_data_directories(items)
         for data_item in items:
             print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]}...")
             urlretrieve(data_item["url"], os.path.join(BASE_DIR, data_item["source"], f"{data_item["name"]}.{data_item["format"]}"))
 
 if __name__ == '__main__':
-    DownloadData(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
-    DownloadData(GetLatestSunImageUrl(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
-    DownloadData(GetLatest48hVideoUrl(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
-    DownloadData(GetLatest48hVideoUrl(DICT_RESOLUTIONS.get("512x512px"),DICT_FREQUENCIES.get("AIA 304 Å"),DICT_CORNERS.get("CloseUp"),False))
-    cme_daily_movie_pages = CrawlDailyCMEMoviePage(datetime.strptime("Aug 17 2025", "%b %d %Y"))
-    cme_movie_frames = CrawlDailyCMEMovieFrames(cme_daily_movie_pages)
+    download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
+    download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
+    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
+    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
+    cme_movie_page_frames = crawl_daily_cme_movie_pages(datetime.strptime("Aug 17 2025", "%b %d %Y"))
 
-    for page in cme_movie_frames:
+    for cme_movie in cme_movie_page_frames:
         print({
-            "source": page["source"],
-            "format": page["format"],
-            "name": page["name"],
+            "source": cme_movie["source"],
+            "format": cme_movie["format"],
+            "name": cme_movie["name"],
             "url": {
-                "page": page["url"]["page"],
-                "jfiles1": f"{len(page["url"]["jfiles1"])} entries",
-                "jfiles2": f"{len(page["url"]["jfiles2"])} entries"
+                "page": cme_movie["url"]["page"],
+                "jfiles1": f"{len(cme_movie["url"]["jfiles1"])} entries",
+                "jfiles2": f"{len(cme_movie["url"]["jfiles2"])} entries"
             }
         })
