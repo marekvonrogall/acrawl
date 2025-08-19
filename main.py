@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.request import urlretrieve
+import pandas as pd
 import os
 import re
 import requests
@@ -40,7 +41,7 @@ DATA_SUNSPOTS = [
 ]
 
 # KP-INDEX
-DATA_KP_INDEX = [
+DATA_KP_INDEX = [#YYY MM DD hh.h hh._m        days      days_m     Kp   ap D
     {
         "source": "swpc", "format": "json", "name": "week_kp-index",
         "url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
@@ -55,7 +56,9 @@ DATA_KP_INDEX = [
         "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_nowcast.txt"
     }, {
         "source": "gfz", "format": "txt", "name": "century_kp-ap-index",
-        "url": "https://kp.gfz.de/app/files/Kp_ap_since_1932.txt"
+        "url": "https://kp.gfz.de/app/files/Kp_ap_since_1932.txt",
+        "col_names": ["year", "month", "day", "start_hour", "mid_hour", "days_since_1932",
+        "days_mid", "Kp", "ap", "definitive"], "delimiter": "whitespace", "comment": "#"
     }, {
         "source": "gfz", "format": "txt", "name": "century_kp-ap-index-detailed",
         "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_since_1932.txt"
@@ -213,6 +216,11 @@ def crawl_daily_cme_movie_frames(cme_movie_pages):
 
     return cme_movie_frames
 
+# DATA MAPS
+DATA_SUNSPOTS_MAP = {item["name"]: item for item in DATA_SUNSPOTS}
+DATA_KP_INDEX_MAP = {item["name"]: item for item in DATA_KP_INDEX}
+DATA_CME = {item["name"]: item for item in DATA_CME}
+
 # DIRECTORIES
 def create_data_directories(*args):
     os.makedirs(BASE_DIR, exist_ok=True)
@@ -238,13 +246,37 @@ def download_data(*args):
             print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]}...")
             urlretrieve(data_item["url"], os.path.join(BASE_DIR, data_item["source"], f"{data_item["name"]}.{data_item["format"]}"))
 
-if __name__ == '__main__':
-    download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
-    download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
-    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
-    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
-    cme_movie_page_frames = crawl_daily_cme_movie_pages(datetime.strptime("Aug 17 2025", "%b %d %Y"))
+# PARSING
+def parse_file(file):
+    delimiter = file.get("delimiter")
+    filename = os.path.join(BASE_DIR, file.get("source"), f"{file.get("name")}.{file.get("format")}")
+    col_names = file.get("col_names")
+    comment = file.get("comment")
 
+    if delimiter == "whitespace":
+        df = pd.read_csv(
+            filename,
+            sep = r"\s+",
+            names=col_names,
+            comment=comment,
+            engine="python"
+        )
+    else:
+        df = pd.read_csv(
+            filename,
+            sep=delimiter,
+            names=col_names,
+            comment=comment
+        )
+
+    return df
+
+if __name__ == '__main__':
+    #download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
+    #download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
+    #download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
+    #download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
+    cme_movie_page_frames = crawl_daily_cme_movie_pages(datetime.strptime("Aug 17 2025", "%b %d %Y"))
     for cme_movie in cme_movie_page_frames:
         print({
             "source": cme_movie["source"],
@@ -256,3 +288,8 @@ if __name__ == '__main__':
                 "jfiles2": f"{len(cme_movie["url"]["jfiles2"])} entries"
             }
         })
+
+    file_century_kp_ap_index = DATA_KP_INDEX_MAP.get("century_kp-ap-index")
+    parsed_file_century_kp_ap_index = parse_file(file_century_kp_ap_index)
+    print(parsed_file_century_kp_ap_index.head())
+    print(parsed_file_century_kp_ap_index.columns)
