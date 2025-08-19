@@ -1,6 +1,7 @@
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
+import re
 
 session = requests.Session()
 
@@ -140,7 +141,7 @@ nasa_txt_cme_catalog = {
 }
 
 def GetDailyCMEMovieUrl(date=datetime.today()):
-    date = date.strftime('%Y/%m/%d')
+    date = date.strftime("%Y/%m/%d")
     return f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}"
 
 def CrawlDailyCMEMoviePage(date=datetime.today()):
@@ -149,17 +150,54 @@ def CrawlDailyCMEMoviePage(date=datetime.today()):
     try:
         response = fetch_url(daily_cme_movie_url)
         soup = BeautifulSoup(response.text, "html.parser")
-        for a in soup('a', href=True):
-            url = f"{daily_cme_movie_url}/{a['href']}"
-            if url.endswith(".html"): daily_cme_movie_pages.append(url)
+        for a in soup("a", href=True):
+            url = f"{daily_cme_movie_url}/{a["href"]}"
+            if url.endswith(".html"):
+                response = fetch_url(url)
+                redirect_soup = BeautifulSoup(response.text, "html.parser")
+                meta = redirect_soup.find("meta", attrs={"http-equiv": "Refresh"})
+                if meta and "content" in meta.attrs:
+                    content = meta["content"]
+                    redirect_url = content.split("URL=")[1].strip()
+                    daily_cme_movie_pages.append(redirect_url)
     except requests.exceptions.RequestException as e:
         print(e)
     return daily_cme_movie_pages
+
+def CrawlDailyCMEMovieFrames(cme_movie_pages):
+    cme_movie_frames = []
+
+    for page in cme_movie_pages:
+        cme_movie_dict = {"page": page, "jfiles1": [], "jfiles2": []}
+        try:
+            response = fetch_url(page)
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            for script in soup.find_all("script"):
+                text = script.get_text()
+                if not text:
+                    continue
+
+                pattern = r'(jfiles\d+)\.push\s*\(\s*"([^"]+)"\s*\)'
+                matches = re.findall(pattern, text)
+
+                for jfiles_name, url in matches:
+                    if jfiles_name == "jfiles1":
+                        cme_movie_dict["jfiles1"].append(url)
+                    elif jfiles_name == "jfiles2":
+                        cme_movie_dict["jfiles2"].append(url)
+
+                cme_movie_frames.append(cme_movie_dict)
+
+        except requests.exceptions.RequestException as e:
+            print(e)
+
+    return cme_movie_frames
 
 if __name__ == '__main__':
     print(GetLatestSunImageUrl(dict_resolutions.get("1024x1024px"), dict_frequencies.get("AIA 211 Å"), True))
     print(GetLatestSunImageUrl("512", "0193", True))
     print(GetLatestSunImageUrl(frequency=dict_frequencies.get("AIA 1700 Å")))
     print(GetLatest48hVideoUrl())
-    print(GetDailyCMEMovieUrl(datetime.strptime('Aug 17 2025', '%b %d %Y')))
-    print(CrawlDailyCMEMoviePage(datetime.strptime('Aug 17 2025', '%b %d %Y')))
+    cme_daily_movie_pages = CrawlDailyCMEMoviePage(datetime.strptime("Aug 17 2025", "%b %d %Y"))
+    print(CrawlDailyCMEMovieFrames(cme_daily_movie_pages))
