@@ -142,10 +142,16 @@ nasa_txt_cme_catalog = {
 
 def GetDailyCMEMovieUrl(date=datetime.today()):
     date = date.strftime("%Y/%m/%d")
-    return f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}"
+    return {
+        "source": "nasa",
+        "format": "url",
+        "name": "daily_cme_movie_base_url",
+        "url": f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}"
+    }
 
 def CrawlDailyCMEMoviePage(date=datetime.today()):
-    daily_cme_movie_url = GetDailyCMEMovieUrl(date)
+    daily_cme_movie = GetDailyCMEMovieUrl(date)
+    daily_cme_movie_url = daily_cme_movie["url"]
     daily_cme_movie_pages = []
     try:
         response = fetch_url(daily_cme_movie_url)
@@ -162,13 +168,29 @@ def CrawlDailyCMEMoviePage(date=datetime.today()):
                     daily_cme_movie_pages.append(redirect_url)
     except requests.exceptions.RequestException as e:
         print(e)
-    return daily_cme_movie_pages
+
+    return {
+        "source": daily_cme_movie["source"],
+        "format": "url",
+        "name": "daily_cme_movie_urls",
+        "url": daily_cme_movie_pages
+    }
 
 def CrawlDailyCMEMovieFrames(cme_movie_pages):
     cme_movie_frames = []
 
-    for page in cme_movie_pages:
-        cme_movie_dict = {"page": page, "jfiles1": [], "jfiles2": []}
+    for page in cme_movie_pages["url"]:
+        cme_movie_dict = {
+            "source": cme_movie_pages["source"],
+            "format": "url",
+            "name": "daily_cme_movie_frames_url",
+            "url": {
+                "page": page,
+                "jfiles1": [],
+                "jfiles2": []
+            }
+        }
+
         try:
             response = fetch_url(page)
             soup = BeautifulSoup(response.text, "html.parser")
@@ -183,11 +205,11 @@ def CrawlDailyCMEMovieFrames(cme_movie_pages):
 
                 for jfiles_name, url in matches:
                     if jfiles_name == "jfiles1":
-                        cme_movie_dict["jfiles1"].append(url)
+                        cme_movie_dict["url"]["jfiles1"].append(url)
                     elif jfiles_name == "jfiles2":
-                        cme_movie_dict["jfiles2"].append(url)
+                        cme_movie_dict["url"]["jfiles2"].append(url)
 
-                cme_movie_frames.append(cme_movie_dict)
+            cme_movie_frames.append(cme_movie_dict)
 
         except requests.exceptions.RequestException as e:
             print(e)
@@ -200,4 +222,16 @@ if __name__ == '__main__':
     print(GetLatestSunImageUrl(frequency=dict_frequencies.get("AIA 1700 Å")))
     print(GetLatest48hVideoUrl())
     cme_daily_movie_pages = CrawlDailyCMEMoviePage(datetime.strptime("Aug 17 2025", "%b %d %Y"))
-    print(CrawlDailyCMEMovieFrames(cme_daily_movie_pages))
+    cme_movie_frames = CrawlDailyCMEMovieFrames(cme_daily_movie_pages)
+
+    for page in cme_movie_frames:
+        print({
+            "source": page["source"],
+            "format": page["format"],
+            "name": page["name"],
+            "url": {
+                "page": page["url"]["page"],
+                "jfiles1": page["url"]["jfiles1"][:2],
+                "jfiles2": page["url"]["jfiles2"][:2]
+            }
+        })
