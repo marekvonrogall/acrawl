@@ -212,10 +212,23 @@ def get_latest48h_video_url (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FR
 DATA_CME = [
     {
         "source": "nasa", "format": "html", "name": "cme_catalog_html",
-        "url": "https://cdaw.gsfc.nasa.gov/CME_list/"
+        "url": "https://cdaw.gsfc.nasa.gov/CME_list/",
+        "parsing_options": None
     }, {
         "source": "nasa", "format": "html", "name": "cme_catalog_text",
-        "url": "https://cdaw.gsfc.nasa.gov/CME_list/UNIVERSAL_ver2/text_ver/"
+        "url": "https://cdaw.gsfc.nasa.gov/CME_list/UNIVERSAL_ver2/text_ver/",
+        "parsing_options": None
+    }, {
+        "source": "nasa", "format": "txt", "name": "cme_catalog_all",
+        "url": "https://cdaw.gsfc.nasa.gov/CME_list/UNIVERSAL_ver2/text_ver/univ_all.txt",
+        "parsing_options": {
+            "col_names": [
+                "date", "time", "central_PA", "width", "linear_speed",
+                "speed_2nd_initial", "speed_2nd_final", "speed_2nd_20R",
+                "acceleration", "mass", "kinetic_energy", "MPA", "remarks"
+            ],
+            "delimiter": "|", "comment": "=", "skip_rows": 1,
+        }
     }
 ]
 
@@ -356,19 +369,48 @@ def parse_file(file):
                     filename,
                     sep=delimiter,
                     names=col_names,
-                    comment=comment
+                    comment=comment,
+                    skiprows = skip_rows
                 )
         else: return None
         file["data_frame"] = df
         return file
-    except Exception as e: f"Error parsing file: {e}"
+    except Exception as e: print(f"Error parsing file: {e}")
     return None
 
+# PREPROCESSING
+def preprocess_cme_catalog_all(infile):
+    cleaned = []
+    in_filepath = os.path.join(BASE_DIR, infile["source"], f"{infile["name"]}.{infile["format"]}")
+    out_filepath = os.path.join(BASE_DIR, infile["source"], f"{infile["name"]}_processed.{infile["format"]}")
+    # Der Chatsklave hat gezaubert
+    with open(in_filepath, "r") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            # skip headers / separators
+            if line.startswith("=") or line.startswith("Date") or line.strip() == "":
+                continue
+            # fix multiple spaces -> single space
+            parts = line.split()
+            if len(parts) < 12:
+                # skip non-data lines (like "Revised on  2010/11/22")
+                continue
+            # join first 12 fields, keep remainder as remarks
+            fixed = parts[:12] + [" ".join(parts[12:])]
+            cleaned.append(" | ".join(fixed))  # use pipe as delimiter
+
+    with open(out_filepath, "w") as f:
+        for row in cleaned:
+            f.write(row + "\n")
+    outfile = infile.copy()
+    outfile["name"] += "_processed"
+    return outfile
+
 if __name__ == '__main__':
-    #download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
-    #download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
-    #download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
-    #download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
+    download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
+    download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
+    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
+    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
     cme_movie_page_frames = crawl_daily_cme_movie_pages(datetime.strptime("Aug 17 2025", "%b %d %Y"))
     for cme_movie in cme_movie_page_frames:
         print({
@@ -386,14 +428,17 @@ if __name__ == '__main__':
     unparsed_files = []
     parsed_file_count = 0
 
-    for unparsed_file in list(DATA_SUNSPOTS) + list(DATA_KP_INDEX):
-        parsed_file = parse_file(unparsed_file)
-        if parsed_file:
+    for unparsed_file in list(DATA_SUNSPOTS) + list(DATA_KP_INDEX) + list(DATA_CME):
+        if unparsed_file["name"] == "cme_catalog_all":
+            print(f"Pre-processing {unparsed_file["name"]}.{unparsed_file["format"]}...")
+            unparsed_file = preprocess_cme_catalog_all(DATA_CME_MAP["cme_catalog_all"])
+        if unparsed_file["parsing_options"]:
+            parsed_file = parse_file(unparsed_file)
             parsed_files.append(parsed_file)
-            print(parsed_file)
+            print(f"Successfully parsed {parsed_file["name"]}.{parsed_file["format"]}!")
             parsed_file_count += 1
         else: unparsed_files.append(unparsed_file)
 
-    print(f"Parsed {parsed_file_count} / {len(list(DATA_SUNSPOTS) + list(DATA_KP_INDEX))} files. Unparsed files:")
+    print(f"Parsed {parsed_file_count} / {len(list(DATA_SUNSPOTS) + list(DATA_KP_INDEX) + list(DATA_CME))} files. Files that could not be parsed:")
     for unparsed_file in unparsed_files:
         print(f"{unparsed_file["name"]}.{unparsed_file["format"]}")
