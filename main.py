@@ -44,26 +44,67 @@ DATA_SUNSPOTS = [
 DATA_KP_INDEX = [#YYY MM DD hh.h hh._m        days      days_m     Kp   ap D
     {
         "source": "swpc", "format": "json", "name": "week_kp-index",
-        "url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
+        "url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
+        "parsing_options": {
+            "col_names": ["time_tag", "Kp", "a_running", "station_count"],
+            "comment": None
+        }
     }, {
         "source": "swpc", "format": "txt", "name": "month_kp-index",
-        "url": "https://services.swpc.noaa.gov/text/daily-geomagnetic-indices.txt"
+        "url": "https://services.swpc.noaa.gov/text/daily-geomagnetic-indices.txt",
+        "parsing_options": {
+            "col_names": [
+                "year", "month", "day",
+                "Af", "Kf1", "Kf2", "Kf3", "Kf4", "Kf5", "Kf6", "Kf7", "Kf8",
+                "Ac", "Kc1", "Kc2", "Kc3", "Kc4", "Kc5", "Kc6", "Kc7", "Kc8",
+                "Ap", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7", "Kp8"
+            ],
+            "delimiter": "whitespace", "comment": "#", "skip_rows": 2
+        }
     }, {
         "source": "gfz", "format": "txt", "name": "month_kp-ap-index",
-        "url": "https://kp.gfz.de/app/files/Kp_ap_nowcast.txt"
+        "url": "https://kp.gfz.de/app/files/Kp_ap_nowcast.txt",
+        "parsing_options": {
+            "col_names": [
+                "year", "month", "day", "start_hour", "mid_hour",
+                "days_since_1932", "days_mid", "Kp", "ap", "definitive"
+            ],
+            "delimiter": "whitespace", "comment": "#"
+        }
     }, {
         "source": "gfz", "format": "txt", "name": "month_kp-ap-index-detailed",
-        "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_nowcast.txt"
+        "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_nowcast.txt",
+        "parsing_options": {
+            "col_names": [
+                "year", "month", "day", "days_since_1932", "days_mid", "Bsr",
+                "dB", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7", "Kp8",
+                "ap1", "ap2", "ap3", "ap4", "ap5", "ap6", "ap7", "ap8",
+                "Ap", "SN", "F107_obs", "F107_adj", "definitive"
+            ],
+            "delimiter": "whitespace", "comment": "#"
+        }
     }, {
         "source": "gfz", "format": "txt", "name": "century_kp-ap-index",
         "url": "https://kp.gfz.de/app/files/Kp_ap_since_1932.txt",
         "parsing_options": {
-            "col_names": ["year", "month", "day", "start_hour", "mid_hour", "days_since_1932",
-            "days_mid", "Kp", "ap", "definitive"], "delimiter": "whitespace", "comment": "#"
+            "col_names": [
+                "year", "month", "day", "start_hour", "mid_hour",
+                "days_since_1932", "days_mid", "Kp", "ap", "definitive"
+            ],
+            "delimiter": "whitespace", "comment": "#"
         }
     }, {
         "source": "gfz", "format": "txt", "name": "century_kp-ap-index-detailed",
-        "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_since_1932.txt"
+        "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_since_1932.txt",
+        "parsing_options": {
+            "col_names": [
+                "year", "month", "day", "days_since_1932", "days_mid", "Bsr",
+                "dB", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7","Kp8",
+                "ap1", "ap2", "ap3", "ap4", "ap5", "ap6", "ap7", "ap8",
+                "Ap", "SN", "F107_obs", "F107_adj", "definitive"
+            ],
+            "delimiter": "whitespace", "comment": "#"
+        }
     }
 ]
 
@@ -250,21 +291,28 @@ def download_data(*args):
 
 # PARSING
 def parse_file(file):
-    if file.get("parsing_options"):
-        delimiter = file["parsing_options"]["delimiter"]
+    if not file.get("parsing_options"):
+        return None
+
+    try:
         filename = os.path.join(BASE_DIR, file["source"], f"{file["name"]}.{file["format"]}")
         col_names = file["parsing_options"]["col_names"]
         comment = file["parsing_options"]["comment"]
 
-        try:
-
+        if file["format"] == "json":
+            df = pd.read_json(filename)
+            df.columns = col_names
+        elif file["format"] == "txt" or file["format"] == "csv":
+            delimiter = file["parsing_options"]["delimiter"]
+            skip_rows = file["parsing_options"].get("skip_rows", 0)
             if delimiter == "whitespace":
                 df = pd.read_csv(
                     filename,
                     sep = r"\s+",
                     names=col_names,
                     comment=comment,
-                    engine="python"
+                    engine="python",
+                    skiprows=skip_rows
                 )
             else:
                 df = pd.read_csv(
@@ -273,11 +321,11 @@ def parse_file(file):
                     names=col_names,
                     comment=comment
                 )
-
-            file["data_frame"] = df
-            return file
-        except: pass
-    return "This file cannot be parsed."
+        else: return None
+        file["data_frame"] = df
+        return file
+    except Exception as e: f"Error parsing file: {e}"
+    return None
 
 if __name__ == '__main__':
     #download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
@@ -297,7 +345,9 @@ if __name__ == '__main__':
             }
         })
 
-    file_century_kp_ap_index = DATA_KP_INDEX_MAP.get("century_kp-ap-index")
-    parsed_file_century_kp_ap_index = parse_file(file_century_kp_ap_index)
-    print(parsed_file_century_kp_ap_index["data_frame"].head())
-    print(parsed_file_century_kp_ap_index["data_frame"].columns)
+    parsed_files = []
+    for unparsed_file in DATA_KP_INDEX_MAP.values():
+        parsed_file = parse_file(unparsed_file)
+        if parsed_file:
+            parsed_files.append(parsed_file)
+            print(parsed_file)
