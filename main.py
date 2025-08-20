@@ -343,6 +343,7 @@ def download_data(*args):
 def parse_file(file):
     if not file.get("parsing_options"):
         return None
+    file = pre_process_file(file)
 
     try:
         filename = os.path.join(BASE_DIR, file["source"], f"{file["name"]}.{file["format"]}")
@@ -379,6 +380,14 @@ def parse_file(file):
     return None
 
 # PREPROCESSING
+def pre_process_file(infile):
+    outfile = infile
+    if infile["name"] == "cme_catalog_all":
+        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
+        outfile = preprocess_cme_catalog_all(infile)
+    # else file does not need pre-processing
+    return outfile
+
 def preprocess_cme_catalog_all(infile):
     cleaned = []
     in_filepath = os.path.join(BASE_DIR, infile["source"], f"{infile["name"]}.{infile["format"]}")
@@ -409,8 +418,8 @@ def preprocess_cme_catalog_all(infile):
 if __name__ == '__main__':
     download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
     download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
-    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
-    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
+    #download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
+    #download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
     cme_movie_page_frames = crawl_daily_cme_movie_pages(datetime.strptime("Aug 17 2025", "%b %d %Y"))
     for cme_movie in cme_movie_page_frames:
         print({
@@ -429,15 +438,14 @@ if __name__ == '__main__':
     parsed_file_count = 0
 
     for unparsed_file in list(DATA_SUNSPOTS) + list(DATA_KP_INDEX) + list(DATA_CME):
-        if unparsed_file["name"] == "cme_catalog_all":
-            print(f"Pre-processing {unparsed_file["name"]}.{unparsed_file["format"]}...")
-            unparsed_file = preprocess_cme_catalog_all(DATA_CME_MAP["cme_catalog_all"])
         if unparsed_file["parsing_options"]:
             parsed_file = parse_file(unparsed_file)
-            parsed_files.append(parsed_file)
-            print(f"Successfully parsed {parsed_file["name"]}.{parsed_file["format"]}!")
-            parsed_file_count += 1
-        else: unparsed_files.append(unparsed_file)
+            if parsed_file:
+                parsed_files.append(parsed_file)
+                print(f"Successfully parsed {parsed_file["name"]}.{parsed_file["format"]}!")
+                parsed_file_count += 1
+                continue
+        unparsed_files.append(unparsed_file)
 
     print(f"Parsed {parsed_file_count} / {len(list(DATA_SUNSPOTS) + list(DATA_KP_INDEX) + list(DATA_CME))} files. Files that could not be parsed:")
     for unparsed_file in unparsed_files:
