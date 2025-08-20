@@ -57,8 +57,10 @@ DATA_KP_INDEX = [#YYY MM DD hh.h hh._m        days      days_m     Kp   ap D
     }, {
         "source": "gfz", "format": "txt", "name": "century_kp-ap-index",
         "url": "https://kp.gfz.de/app/files/Kp_ap_since_1932.txt",
-        "col_names": ["year", "month", "day", "start_hour", "mid_hour", "days_since_1932",
-        "days_mid", "Kp", "ap", "definitive"], "delimiter": "whitespace", "comment": "#"
+        "parsing_options": {
+            "col_names": ["year", "month", "day", "start_hour", "mid_hour", "days_since_1932",
+            "days_mid", "Kp", "ap", "definitive"], "delimiter": "whitespace", "comment": "#"
+        }
     }, {
         "source": "gfz", "format": "txt", "name": "century_kp-ap-index-detailed",
         "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_since_1932.txt"
@@ -248,28 +250,34 @@ def download_data(*args):
 
 # PARSING
 def parse_file(file):
-    delimiter = file.get("delimiter")
-    filename = os.path.join(BASE_DIR, file.get("source"), f"{file.get("name")}.{file.get("format")}")
-    col_names = file.get("col_names")
-    comment = file.get("comment")
+    if file.get("parsing_options"):
+        delimiter = file["parsing_options"]["delimiter"]
+        filename = os.path.join(BASE_DIR, file["source"], f"{file["name"]}.{file["format"]}")
+        col_names = file["parsing_options"]["col_names"]
+        comment = file["parsing_options"]["comment"]
 
-    if delimiter == "whitespace":
-        df = pd.read_csv(
-            filename,
-            sep = r"\s+",
-            names=col_names,
-            comment=comment,
-            engine="python"
-        )
-    else:
-        df = pd.read_csv(
-            filename,
-            sep=delimiter,
-            names=col_names,
-            comment=comment
-        )
+        try:
 
-    return df
+            if delimiter == "whitespace":
+                df = pd.read_csv(
+                    filename,
+                    sep = r"\s+",
+                    names=col_names,
+                    comment=comment,
+                    engine="python"
+                )
+            else:
+                df = pd.read_csv(
+                    filename,
+                    sep=delimiter,
+                    names=col_names,
+                    comment=comment
+                )
+
+            file["data_frame"] = df
+            return file
+        except: pass
+    return "This file cannot be parsed."
 
 if __name__ == '__main__':
     #download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
@@ -291,5 +299,5 @@ if __name__ == '__main__':
 
     file_century_kp_ap_index = DATA_KP_INDEX_MAP.get("century_kp-ap-index")
     parsed_file_century_kp_ap_index = parse_file(file_century_kp_ap_index)
-    print(parsed_file_century_kp_ap_index.head())
-    print(parsed_file_century_kp_ap_index.columns)
+    print(parsed_file_century_kp_ap_index["data_frame"].head())
+    print(parsed_file_century_kp_ap_index["data_frame"].columns)
