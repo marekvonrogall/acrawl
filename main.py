@@ -59,7 +59,7 @@ DATA_SUNSPOTS = [
             "delimiter": ";", "comment": None
         }
     }, {
-        "source": "sidc", "format": "png", "name": "daily_sunspot_plot",
+        "source": "sidc", "folder": "plots", "format": "png", "name": "daily_sunspot_plot",
         "url": "https://www.sidc.be/SILSO/IMAGES/GRAPHICS/wolfjmms.png",
         "parsing_options": None
     }, {
@@ -74,9 +74,58 @@ DATA_SUNSPOTS = [
             "delimiter": ";", "comment": None
         }
     }, {
-        "source": "sidc", "format": "png", "name": "monthly_sunspot_plot",
+        "source": "sidc", "folder": "plots", "format": "png", "name": "monthly_sunspot_plot",
         "url": "https://www.sidc.be/SILSO/DATA/EISN/EISNcurrent.png",
         "parsing_options": None
+    }
+]
+
+# FLARES
+DATA_FLARES = [
+    {
+        "source": "swpc", "format": "json", "name": "xray_flares_latest_primary",
+        "url": "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json",
+        "parsing_options": {
+            "col_names": [
+                "time_tag", "satellite", "current_class", "current_ratio", "current_int_xrlong",
+                "begin_time", "begin_class", "max_time", "max_class", "max_xrlong", "end_time",
+                "max_ratio_time", "max_ratio", "end_class"
+            ],
+            "delimiter": None, "comment": None
+        }
+    }, {
+        "source": "swpc", "format": "json", "name": "xray_flares_latest_secondary",
+        "url": "https://services.swpc.noaa.gov/json/goes/secondary/xray-flares-latest.json",
+        "parsing_options": {
+            "col_names": [
+                "time_tag", "satellite", "current_class", "current_ratio", "current_int_xrlong",
+                "begin_time", "begin_class", "max_time", "max_class", "max_xrlong", "end_time",
+                "max_ratio_time", "max_ratio", "end_class"
+            ],
+            "delimiter": None, "comment": None
+        }
+    }, {
+        "source": "swpc", "format": "json", "name": "xray_flares_week_primary",
+        "url": "https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json",
+        "parsing_options": {
+            "col_names": [
+                "time_tag", "begin_time", "begin_class", "max_time", "max_class",
+                "max_xrlong", "max_ratio", "max_ratio_time", "current_int_xrlong",
+                "end_time", "end_class", "satellite"
+            ],
+            "delimiter": None, "comment": None
+        }
+    }, {
+        "source": "swpc", "format": "json", "name": "xray_flares_week_secondary",
+        "url": "https://services.swpc.noaa.gov/json/goes/secondary/xray-flares-7-day.json",
+        "parsing_options": {
+            "col_names": [
+                "time_tag", "begin_time", "begin_class", "max_time", "max_class",
+                "max_xrlong", "max_ratio", "max_ratio_time", "current_int_xrlong",
+                "end_time", "end_class", "satellite"
+            ],
+            "delimiter": None, "comment": None
+        }
     }
 ]
 
@@ -372,6 +421,7 @@ def write_matching_jfiles_to_file(matching_jfiles, date):
 
 # DATA MAPS
 DATA_SUNSPOTS_MAP = {item["name"]: item for item in DATA_SUNSPOTS}
+DATA_FLARES_MAP = {item["name"]: item for item in DATA_FLARES}
 DATA_KP_INDEX_MAP = {item["name"]: item for item in DATA_KP_INDEX}
 DATA_CME_MAP = {item["name"]: item for item in DATA_CME}
 
@@ -403,6 +453,7 @@ def create_data_directories(*args, date):
     for source in sources:
         create_directory(source, date)
 
+# RETRIEVE DATA
 def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
     for arg in args:
         if isinstance(arg, dict):
@@ -434,6 +485,14 @@ def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
                 date = data_item["date"]
                 download_data(data_item["url"]["jfiles1"], downloaded_data=downloaded_data, date=date)
                 download_data(data_item["url"]["jfiles2"], downloaded_data=downloaded_data, date=date)
+
+def fetch_data(delete_previous_data=True):
+    if delete_previous_data: delete_directory(BASE_DIR)
+    download_data(DATA_SUNSPOTS, DATA_FLARES, DATA_KP_INDEX, DATA_CME)
+    download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
+    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
+    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
+    download_data(get_daily_cme_movies())
 
 # PARSING
 def parse_file(file):
@@ -475,6 +534,23 @@ def parse_file(file):
     except Exception as e: print(f"Error parsing file: {e}")
     return None
 
+def parse_data():
+    parsed_files = []
+    unparsed_files = []
+    parsed_file_count = 0
+
+    for unparsed_file in list(DATA_SUNSPOTS) + list(DATA_FLARES) + list(DATA_KP_INDEX) + list(DATA_CME):
+        if unparsed_file["parsing_options"]:
+            parsed_file = parse_file(unparsed_file)
+            if parsed_file:
+                parsed_files.append(parsed_file)
+                print(f"Successfully parsed {parsed_file["name"]}.{parsed_file["format"]}!")
+                parsed_file_count += 1
+                continue
+        unparsed_files.append(unparsed_file)
+
+    return parsed_files, unparsed_files
+
 # PREPROCESSING
 def pre_process_file(infile):
     outfile = infile
@@ -511,31 +587,36 @@ def preprocess_cme_catalog_all(infile):
     outfile["name"] += "_processed"
     return outfile
 
-def fetch_data(delete_previous_data=True):
-    if delete_previous_data: delete_directory(BASE_DIR)
-    download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
-    download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
-    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
-    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
-    download_data(get_daily_cme_movies())
+# ANALYZING
+def analyze_data():
+    return None
 
-def parse_data():
-    parsed_files = []
-    unparsed_files = []
-    parsed_file_count = 0
+"""
+Sunspot Numbers
 
-    for unparsed_file in list(DATA_SUNSPOTS) + list(DATA_KP_INDEX) + list(DATA_CME):
-        if unparsed_file["parsing_options"]:
-            parsed_file = parse_file(unparsed_file)
-            if parsed_file:
-                parsed_files.append(parsed_file)
-                print(f"Successfully parsed {parsed_file["name"]}.{parsed_file["format"]}!")
-                parsed_file_count += 1
-                continue
-        unparsed_files.append(unparsed_file)
+"daily_sunspot_number":
+- columns: 0 (year), 1 (month), 2 (day), 4 (daily_total_ssn)
+"monthly_sunspot_number": Starts where "daily_sunspot_number"
+- columns: 0 (year), 1 (month), 2 (day), 4 (daily_total_ssn)
+Other data: images (2): "daily_sunspot_plot" & "monthly_sunspot_plot" (save path in DB)
 
-    return parsed_files, unparsed_files
+Flares
+
+
+
+Kp-Index
+
+
+
+Koronamassen-Auswürfe, CME-Bilder
+"""
+
+# STORING
+def store_data(data):
+    pass
 
 if __name__ == '__main__':
     fetch_data()
-    parsed_date, _ = parse_data()
+    parsed_data, _ = parse_data()
+    analyzed_data = analyze_data()
+    store_data(analyzed_data)
