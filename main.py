@@ -5,8 +5,11 @@ import pandas as pd
 import os
 import re
 import requests
+import json
+import shutil
 
 SESSION = requests.Session()
+FETCHING_DATE = datetime.today().strftime("%Y-%m-%d")
 BASE_DIR = "data"
 
 def fetch_url(url):
@@ -181,7 +184,7 @@ def get_latest_sun_image_url (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_F
     if frequency in DICT_FREQUENCIES.values() and resolution in DICT_RESOLUTIONS.values():
         str_pfss = "pfss" if pfss else ""
         latest_url = f"https://sdo.gsfc.nasa.gov/assets/img/latest/latest_{resolution}_{frequency}{str_pfss}.jpg"
-        filename = f"latest_{datetime.today().strftime("%Y-%m-%d")}_{resolution}_{frequency}{str_pfss}"
+        filename = f"latest_{FETCHING_DATE}_{resolution}_{frequency}{str_pfss}"
 
         return {
             "source": "nasa",
@@ -199,7 +202,7 @@ def get_latest48h_video_url (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FR
     if frequency in DICT_FREQUENCIES.values() and corner in DICT_CORNERS.values() and (resolution == DICT_RESOLUTIONS.get("512x512px") or resolution == DICT_RESOLUTIONS.get("1024x1024px")):
         str_synoptic = "_synoptic" if synoptic else ""
         latest48_url = f"https://sdo.gsfc.nasa.gov/assets/img/latest/mpeg/latest_{resolution}_{corner}{frequency}{str_synoptic}.mp4"
-        filename = f"latest48_{datetime.today().strftime("%Y-%m-%d")}_{resolution}_{corner}{frequency}{str_synoptic}"
+        filename = f"latest48_{FETCHING_DATE}_{resolution}_{corner}{frequency}{str_synoptic}"
 
         return {
             "source": "nasa",
@@ -234,19 +237,40 @@ DATA_CME = [
     }
 ]
 
-def get_daily_cme_movie_url(date=datetime.today()):
-    date = date.strftime("%Y/%m/%d")
+def get_latest_available_cme_movie_url():
+    base_cme_url = "https://cdaw.gsfc.nasa.gov/CME_list/daily_movies"
+    year_cme_url = retrieve_latest_cme_href_link(base_cme_url)
+    year_month_cme_url = retrieve_latest_cme_href_link(year_cme_url)
+    year_month_day_cme_url = retrieve_latest_cme_href_link(year_month_cme_url)
+
+    date = year_month_day_cme_url.rsplit("/", 3)
+    date = f"{date[1]}-{date[2]}-{date[3]}"
+
     return {
         "source": "nasa",
         "format": "url",
         "name": "daily_cme_movie_base_url",
-        "url": f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}"
+        "url": year_month_day_cme_url,
+        "date": date
     }
 
-def get_daily_cme_movies(date=datetime.today()):
-    daily_cme_movie = get_daily_cme_movie_url(date)
+def retrieve_latest_cme_href_link(url):
+    try:
+        response = fetch_url(url)
+        soup = BeautifulSoup(response.text, "html.parser")
+        hrefs = []
+        for a in soup("a", href=True):
+            if a["href"][:-1].isdigit():
+                hrefs.append(a["href"][:-1])
+        return f"{url}/{max(hrefs)}"
+    except Exception as e: print("Error", e)
+
+def get_daily_cme_movies():
+    daily_cme_movie = get_latest_available_cme_movie_url()
     daily_cme_movie_url = daily_cme_movie["url"]
     daily_cme_movie_pages = []
+    date = daily_cme_movie["date"]
+
     try:
         response = fetch_url(daily_cme_movie_url)
         soup = BeautifulSoup(response.text, "html.parser")
@@ -269,7 +293,7 @@ def get_daily_cme_movies(date=datetime.today()):
         "name": "daily_cme_movie_urls",
         "url": daily_cme_movie_pages
     }
-    return crawl_daily_cme_movie_frames(cme_daily_movie_pages, date.strftime("%Y-%m-%d"))
+    return crawl_daily_cme_movie_frames(cme_daily_movie_pages, date)
 
 def crawl_daily_cme_movie_frames(cme_movie_pages, date):
     cme_movie_frames = []
@@ -283,7 +307,8 @@ def crawl_daily_cme_movie_frames(cme_movie_pages, date):
                 "page": page,
                 "jfiles1": [],
                 "jfiles2": []
-            }
+            },
+            "date": date
         }
 
         try:
@@ -300,29 +325,38 @@ def crawl_daily_cme_movie_frames(cme_movie_pages, date):
                 jfile1_frame_count = 0
                 jfile2_frame_count = 0
 
-                for jfiles_name, url in matches:
-                    image_format = url[-3:]
-                    folders = cme_movie_dict["url"]["page"].split("&")
-                    jfile1_folder = folders[1].rsplit("=")[1]
-                    if len(folders) == 2: jfile2_folder = "goesx"
-                    else: jfile2_folder = folders[2].rsplit("=")[1]
+                folders = cme_movie_dict["url"]["page"].split("&")
+                jfile1_folder = folders[1].rsplit("=")[1]
+                if len(folders) == 2: jfile2_folder = "goesx"
+                else: jfile2_folder = folders[2].rsplit("=")[1]
+
+                matching_jfiles = {"url": page, jfile1_folder: [], jfile2_folder: []}
+
+                for jfile_names, url in matches:
+                    frame_format = url[-3:]
+                    frame_name = url.rsplit("/",1)[1][:-4]
+
+                    matching_jfiles["path"] = os.path.join(cme_movie_pages["source"], f"{date}_{jfile1_folder}")
 
                     jfile = {
                         "source": cme_movie_dict["source"],
-                        "format": image_format,
+                        "name": frame_name,
+                        "format": frame_format,
                         "url": url
                     }
 
-                    if jfiles_name == "jfiles1":
+                    if jfile_names == "jfiles1":
                         jfile1_frame_count += 1
-                        jfile["name"] = f"frame_{jfile1_frame_count:03d}"
                         jfile["folder"] = f"{date}_{jfile1_folder}"
                         cme_movie_dict["url"]["jfiles1"].append(jfile)
-                    elif jfiles_name == "jfiles2":
+                        matching_jfiles[jfile1_folder].append(f"{frame_name}.{frame_format}")
+                    elif jfile_names == "jfiles2":
                         jfile2_frame_count += 1
-                        jfile["name"] = f"frame_{jfile2_frame_count:03d}"
                         jfile["folder"] = f"{date}_{jfile2_folder}"
                         cme_movie_dict["url"]["jfiles2"].append(jfile)
+                        matching_jfiles[jfile2_folder].append(f"{frame_name}.{frame_format}")
+                if matching_jfiles.get("path"):
+                    write_matching_jfiles_to_file(matching_jfiles, date)
 
             cme_movie_frames.append(cme_movie_dict)
 
@@ -331,15 +365,35 @@ def crawl_daily_cme_movie_frames(cme_movie_pages, date):
 
     return cme_movie_frames
 
+def write_matching_jfiles_to_file(matching_jfiles, date):
+    create_directory(matching_jfiles["path"], date)
+    with open(os.path.join(BASE_DIR, date, f"{matching_jfiles["path"]}/matches.json"), "a") as f:
+        json.dump(matching_jfiles, f)
+
 # DATA MAPS
 DATA_SUNSPOTS_MAP = {item["name"]: item for item in DATA_SUNSPOTS}
 DATA_KP_INDEX_MAP = {item["name"]: item for item in DATA_KP_INDEX}
 DATA_CME_MAP = {item["name"]: item for item in DATA_CME}
 
 # DIRECTORIES
-def create_data_directories(*args):
-    os.makedirs(BASE_DIR, exist_ok=True)
+def delete_directory(path):
+    if os.path.exists(path):
+        try:
+            shutil.rmtree(path)
+            print("Successfully deleted directory", path)
+        except Exception as e:
+            print("Error deleting directory", e)
 
+def create_directory(path, date=FETCHING_DATE):
+    path = os.path.join(BASE_DIR, date, path)
+    if not os.path.exists(path):
+        try:
+            os.makedirs(path)
+            print("Successfully created directory", path)
+        except Exception as e:
+            print("Error creating directory", e)
+
+def create_data_directories(*args, date):
     sources = set()
     for data_item in args:
         sources.add(data_item["source"])
@@ -347,10 +401,9 @@ def create_data_directories(*args):
             sources.add(os.path.join(data_item["source"], data_item["folder"]))
 
     for source in sources:
-        source_dir = os.path.join(BASE_DIR, source)
-        os.makedirs(source_dir, exist_ok=True)
+        create_directory(source, date)
 
-def download_data(*args, downloaded_data=None):
+def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
     for arg in args:
         if isinstance(arg, dict):
             items = [arg]
@@ -364,11 +417,11 @@ def download_data(*args, downloaded_data=None):
                 print(f"Skipping \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]} ({data_item["url"]}) because it already exists.")
                 continue
 
-            create_data_directories(data_item)
+            create_data_directories(data_item, date=date)
 
             if isinstance(data_item["url"], str):
-                if data_item.get("folder"): download_path = os.path.join(BASE_DIR, data_item["source"], data_item["folder"],f"{data_item["name"]}.{data_item["format"]}")
-                else: download_path = os.path.join(BASE_DIR, data_item["source"], f"{data_item["name"]}.{data_item["format"]}")
+                if data_item.get("folder"): download_path = os.path.join(BASE_DIR, date, data_item["source"], data_item["folder"],f"{data_item["name"]}.{data_item["format"]}")
+                else: download_path = os.path.join(BASE_DIR, date, data_item["source"], f"{data_item["name"]}.{data_item["format"]}")
                 print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]} ({data_item["url"]}) into {download_path}")
                 try:
                     urlretrieve(data_item["url"], download_path)
@@ -378,8 +431,9 @@ def download_data(*args, downloaded_data=None):
 
             elif isinstance(data_item["url"], dict) and data_item["url"].get("jfiles1") and data_item["url"].get("jfiles2"):
                 print(f"Downloading CME movie frames from: {data_item['url']['page']}")
-                download_data(data_item["url"]["jfiles1"], downloaded_data=downloaded_data)
-                download_data(data_item["url"]["jfiles2"], downloaded_data=downloaded_data)
+                date = data_item["date"]
+                download_data(data_item["url"]["jfiles1"], downloaded_data=downloaded_data, date=date)
+                download_data(data_item["url"]["jfiles2"], downloaded_data=downloaded_data, date=date)
 
 # PARSING
 def parse_file(file):
@@ -388,7 +442,7 @@ def parse_file(file):
     file = pre_process_file(file)
 
     try:
-        filename = os.path.join(BASE_DIR, file["source"], f"{file["name"]}.{file["format"]}")
+        filename = os.path.join(BASE_DIR, FETCHING_DATE, file["source"], f"{file["name"]}.{file["format"]}")
         col_names = file["parsing_options"]["col_names"]
         comment = file["parsing_options"]["comment"]
 
@@ -432,8 +486,8 @@ def pre_process_file(infile):
 
 def preprocess_cme_catalog_all(infile):
     cleaned = []
-    in_filepath = os.path.join(BASE_DIR, infile["source"], f"{infile["name"]}.{infile["format"]}")
-    out_filepath = os.path.join(BASE_DIR, infile["source"], f"{infile["name"]}_processed.{infile["format"]}")
+    in_filepath = os.path.join(BASE_DIR, FETCHING_DATE, infile["source"], f"{infile["name"]}.{infile["format"]}")
+    out_filepath = os.path.join(BASE_DIR, FETCHING_DATE, infile["source"], f"{infile["name"]}_processed.{infile["format"]}")
     # Der Chatsklave hat gezaubert
     with open(in_filepath, "r") as f:
         for line in f:
@@ -457,13 +511,15 @@ def preprocess_cme_catalog_all(infile):
     outfile["name"] += "_processed"
     return outfile
 
-if __name__ == '__main__':
+def fetch_data(delete_previous_data=True):
+    if delete_previous_data: delete_directory(BASE_DIR)
     download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
     download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
     download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
     download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
-    download_data(get_daily_cme_movies(datetime.strptime("Aug 17 2025", "%b %d %Y")))
+    download_data(get_daily_cme_movies())
 
+def parse_data():
     parsed_files = []
     unparsed_files = []
     parsed_file_count = 0
@@ -478,6 +534,8 @@ if __name__ == '__main__':
                 continue
         unparsed_files.append(unparsed_file)
 
-    print(f"Parsed {parsed_file_count} / {len(list(DATA_SUNSPOTS) + list(DATA_KP_INDEX) + list(DATA_CME))} files. Files that could not be parsed:")
-    for unparsed_file in unparsed_files:
-        print(f"{unparsed_file["name"]}.{unparsed_file["format"]}")
+    return parsed_files, unparsed_files
+
+if __name__ == '__main__':
+    fetch_data()
+    parsed_date, _ = parse_data()
