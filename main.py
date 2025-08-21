@@ -185,6 +185,7 @@ def get_latest_sun_image_url (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_F
 
         return {
             "source": "nasa",
+            "folder": "imgLatest",
             "format": "jpg",
             "name": filename,
             "url": latest_url
@@ -202,6 +203,7 @@ def get_latest48h_video_url (resolution=DEFAULT_RESOLUTION, frequency=DEFAULT_FR
 
         return {
             "source": "nasa",
+            "folder": "48hLatest",
             "format": "mp4",
             "name": filename,
             "url": latest48_url
@@ -241,7 +243,7 @@ def get_daily_cme_movie_url(date=datetime.today()):
         "url": f"https://cdaw.gsfc.nasa.gov/CME_list/daily_movies/{date}"
     }
 
-def crawl_daily_cme_movie_pages(date=datetime.today()):
+def get_daily_cme_movies(date=datetime.today()):
     daily_cme_movie = get_daily_cme_movie_url(date)
     daily_cme_movie_url = daily_cme_movie["url"]
     daily_cme_movie_pages = []
@@ -267,9 +269,9 @@ def crawl_daily_cme_movie_pages(date=datetime.today()):
         "name": "daily_cme_movie_urls",
         "url": daily_cme_movie_pages
     }
-    return crawl_daily_cme_movie_frames(cme_daily_movie_pages)
+    return crawl_daily_cme_movie_frames(cme_daily_movie_pages, date.strftime("%Y-%m-%d"))
 
-def crawl_daily_cme_movie_frames(cme_movie_pages):
+def crawl_daily_cme_movie_frames(cme_movie_pages, date):
     cme_movie_frames = []
 
     for page in cme_movie_pages["url"]:
@@ -295,12 +297,32 @@ def crawl_daily_cme_movie_frames(cme_movie_pages):
 
                 pattern = r'(jfiles\d+)\.push\s*\(\s*"([^"]+)"\s*\)'
                 matches = re.findall(pattern, text)
+                jfile1_frame_count = 0
+                jfile2_frame_count = 0
 
                 for jfiles_name, url in matches:
+                    image_format = url[-3:]
+                    folders = cme_movie_dict["url"]["page"].split("&")
+                    jfile1_folder = folders[1].rsplit("=")[1]
+                    if len(folders) == 2: jfile2_folder = "goesx"
+                    else: jfile2_folder = folders[2].rsplit("=")[1]
+
+                    jfile = {
+                        "source": cme_movie_dict["source"],
+                        "format": image_format,
+                        "url": url
+                    }
+
                     if jfiles_name == "jfiles1":
-                        cme_movie_dict["url"]["jfiles1"].append(url)
+                        jfile1_frame_count += 1
+                        jfile["name"] = f"frame_{jfile1_frame_count:03d}"
+                        jfile["folder"] = f"{date}_{jfile1_folder}"
+                        cme_movie_dict["url"]["jfiles1"].append(jfile)
                     elif jfiles_name == "jfiles2":
-                        cme_movie_dict["url"]["jfiles2"].append(url)
+                        jfile2_frame_count += 1
+                        jfile["name"] = f"frame_{jfile2_frame_count:03d}"
+                        jfile["folder"] = f"{date}_{jfile2_folder}"
+                        cme_movie_dict["url"]["jfiles2"].append(jfile)
 
             cme_movie_frames.append(cme_movie_dict)
 
@@ -319,25 +341,45 @@ def create_data_directories(*args):
     os.makedirs(BASE_DIR, exist_ok=True)
 
     sources = set()
-    for arg in args:
-        for data_item in arg:
-            sources.add(data_item["source"])
+    for data_item in args:
+        sources.add(data_item["source"])
+        if data_item.get("folder"):
+            sources.add(os.path.join(data_item["source"], data_item["folder"]))
 
     for source in sources:
         source_dir = os.path.join(BASE_DIR, source)
         os.makedirs(source_dir, exist_ok=True)
 
-def download_data(*args):
+def download_data(*args, downloaded_data=None):
     for arg in args:
         if isinstance(arg, dict):
             items = [arg]
         elif isinstance(arg, (list, tuple)):
             items = arg
         else: raise TypeError
-        create_data_directories(items)
+
+        if downloaded_data is None: downloaded_data = set()
         for data_item in items:
-            print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]}...")
-            urlretrieve(data_item["url"], os.path.join(BASE_DIR, data_item["source"], f"{data_item["name"]}.{data_item["format"]}"))
+            if not isinstance(data_item["url"], dict) and data_item["url"] in downloaded_data:
+                print(f"Skipping \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]} ({data_item["url"]}) because it already exists.")
+                continue
+
+            create_data_directories(data_item)
+
+            if isinstance(data_item["url"], str):
+                if data_item.get("folder"): download_path = os.path.join(BASE_DIR, data_item["source"], data_item["folder"],f"{data_item["name"]}.{data_item["format"]}")
+                else: download_path = os.path.join(BASE_DIR, data_item["source"], f"{data_item["name"]}.{data_item["format"]}")
+                print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]} ({data_item["url"]}) into {download_path}")
+                try:
+                    urlretrieve(data_item["url"], download_path)
+                    downloaded_data.add(data_item["url"])
+                except Exception as e:
+                    print(f"Error downloading file: {e}); skipping.")
+
+            elif isinstance(data_item["url"], dict) and data_item["url"].get("jfiles1") and data_item["url"].get("jfiles2"):
+                print(f"Downloading CME movie frames from: {data_item['url']['page']}")
+                download_data(data_item["url"]["jfiles1"], downloaded_data=downloaded_data)
+                download_data(data_item["url"]["jfiles2"], downloaded_data=downloaded_data)
 
 # PARSING
 def parse_file(file):
@@ -418,20 +460,9 @@ def preprocess_cme_catalog_all(infile):
 if __name__ == '__main__':
     download_data(DATA_SUNSPOTS, DATA_KP_INDEX, DATA_CME)
     download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
-    #download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
-    #download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
-    cme_movie_page_frames = crawl_daily_cme_movie_pages(datetime.strptime("Aug 17 2025", "%b %d %Y"))
-    for cme_movie in cme_movie_page_frames:
-        print({
-            "source": cme_movie["source"],
-            "format": cme_movie["format"],
-            "name": cme_movie["name"],
-            "url": {
-                "page": cme_movie["url"]["page"],
-                "jfiles1": f"{len(cme_movie["url"]["jfiles1"])} entries",
-                "jfiles2": f"{len(cme_movie["url"]["jfiles2"])} entries"
-            }
-        })
+    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
+    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
+    download_data(get_daily_cme_movies(datetime.strptime("Aug 17 2025", "%b %d %Y")))
 
     parsed_files = []
     unparsed_files = []
