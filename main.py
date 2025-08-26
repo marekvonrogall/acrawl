@@ -1,12 +1,19 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.request import urlretrieve
+from sqlalchemy import create_engine, DateTime
+from dotenv import load_dotenv
 import pandas as pd
 import os
 import re
 import requests
 import json
 import shutil
+
+load_dotenv()
+
+CONNECTION_STRING = os.getenv("CONNECTION_STRING")
+ENGINE = create_engine(CONNECTION_STRING)
 
 SESSION = requests.Session()
 FETCHING_DATE = datetime.today().strftime("%Y-%m-%d")
@@ -64,7 +71,7 @@ DATA_SUNSPOTS = [
         "parsing_options": None
     }, {
         "source": "sidc", "format": "csv", "name": "monthly_sunspot_number",
-        "url":"https://www.sidc.be/SILSO/DATA/EISN/EISN_current.csv",
+        "url":"https://www.sidc.be/SILSO/INFO/snmtotcsv.php",
         "parsing_options": {
             "col_names": [
                 "year", "month", "fractional_year",
@@ -72,6 +79,16 @@ DATA_SUNSPOTS = [
                 "observations", "definitive"
             ],
             "delimiter": ";", "comment": None
+        }
+    }, {
+        "source": "sidc", "format": "csv", "name": "daily_estimated_sunspot_number",
+        "url":"https://www.sidc.be/SILSO/DATA/EISN/EISN_current.csv",
+        "parsing_options": {
+            "col_names": [
+                "year", "month", "day", "decimal_date", "estimated_ssn",
+                "estimated_std_dev", "stations_calculated", "stations_available"
+            ],
+            "delimiter": ",", "comment": None
         }
     }, {
         "source": "sidc", "folder": "plots", "format": "png", "name": "monthly_sunspot_plot",
@@ -188,7 +205,7 @@ DATA_KP_INDEX = [
         "parsing_options": {
             "col_names": [
                 "year", "month", "day", "days_since_1932", "days_mid", "Bsr",
-                "dB", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7","Kp8",
+                "dB", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7", "Kp8",
                 "ap1", "ap2", "ap3", "ap4", "ap5", "ap6", "ap7", "ap8",
                 "Ap", "SN", "F107_obs", "F107_adj", "definitive"
             ],
@@ -486,13 +503,13 @@ def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
                 download_data(data_item["url"]["jfiles1"], downloaded_data=downloaded_data, date=date)
                 download_data(data_item["url"]["jfiles2"], downloaded_data=downloaded_data, date=date)
 
-def fetch_data(delete_previous_data=True):
+def fetch_data(delete_previous_data=True, get_daily_cme_movie_frames=True):
     if delete_previous_data: delete_directory(BASE_DIR)
     download_data(DATA_SUNSPOTS, DATA_FLARES, DATA_KP_INDEX, DATA_CME)
     download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
     download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
     download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
-    download_data(get_daily_cme_movies())
+    if get_daily_cme_movie_frames: download_data(get_daily_cme_movies())
 
 # PARSING
 def parse_file(file):
@@ -553,17 +570,32 @@ def parse_data():
 
 # PREPROCESSING
 def pre_process_file(infile):
-    outfile = infile
-    if infile["name"] == "cme_catalog_all":
-        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
-        outfile = preprocess_cme_catalog_all(infile)
-    # else file does not need pre-processing
-    return outfile
-
-def preprocess_cme_catalog_all(infile):
-    cleaned = []
     in_filepath = os.path.join(BASE_DIR, FETCHING_DATE, infile["source"], f"{infile["name"]}.{infile["format"]}")
     out_filepath = os.path.join(BASE_DIR, FETCHING_DATE, infile["source"], f"{infile["name"]}_processed.{infile["format"]}")
+
+    if infile["name"] == "cme_catalog_all":
+        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
+        outfile = preprocess_cme_catalog_all(infile, in_filepath, out_filepath)
+    elif infile["name"] == "daily_estimated_sunspot_number":
+        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
+        outfile = preprocess_daily_estimated_sunspot_number(infile, in_filepath, out_filepath)
+    else: return infile # file does not need pre-processing
+
+    return outfile
+
+def preprocess_daily_estimated_sunspot_number(infile, in_filepath, out_filepath):
+    with open(in_filepath) as f:
+        lines = [line.rstrip(",\n") for line in f]
+
+    with open(out_filepath, "w") as f:
+        f.write("\n".join(lines))
+
+    outfile = infile.copy()
+    outfile["name"] += "_processed"
+    return outfile
+
+def preprocess_cme_catalog_all(infile, in_filepath, out_filepath):
+    cleaned = []
     # Der Chatsklave hat gezaubert
     with open(in_filepath, "r") as f:
         for line in f:
@@ -591,32 +623,85 @@ def preprocess_cme_catalog_all(infile):
 def analyze_data():
     return None
 
-"""
-Sunspot Numbers
-
-"daily_sunspot_number":
-- columns: 0 (year), 1 (month), 2 (day), 4 (daily_total_ssn)
-"monthly_sunspot_number": Starts where "daily_sunspot_number"
-- columns: 0 (year), 1 (month), 2 (day), 4 (daily_total_ssn)
-Other data: images (2): "daily_sunspot_plot" & "monthly_sunspot_plot" (save path in DB)
-
-Flares
-
-
-
-Kp-Index
-
-
-
-Koronamassen-Auswürfe, CME-Bilder
-"""
-
 # STORING
-def store_data(data):
-    pass
+def store_data():
+    for item in normalized_data:
+        table_name = item["name"].replace("-", "_")
+        df = item["data_frame"]
+
+        if list(df.iloc[0, 1:]) == list(df.columns[1:]):
+            df = df.iloc[1:]  # Drop the first row
+            df.reset_index(drop=True, inplace=True)
+
+        """AVOID SOMETHING LIKE THIS:
+        MariaDB [parsed_data]> SELECT * FROM week_kp_index LIMIT 3;
+        +---------------------+------+-----------+---------------+
+        | datetime            | Kp   | a_running | station_count |
+        +---------------------+------+-----------+---------------+
+        | NULL                | Kp   | a_running | station_count |
+        | 2025-08-19 00:00:00 | 3.00 | 15        | 8             |
+        | 2025-08-19 03:00:00 | 2.00 | 7         | 8             |
+        +---------------------+------+-----------+---------------+
+        3 rows in set (0.000 sec)
+        """
+
+        df.to_sql(name=table_name, con=ENGINE, if_exists='replace', index=False, chunksize=5000, dtype={"datetime": DateTime()})
+    return
+
+def normalize_dates():
+    normalized = []
+
+    for item in parsed_data:
+        df = item["data_frame"].copy()
+        temp_datetime = None
+
+        # year, month, day
+        if {"year", "month", "day"}.issubset(df.columns):
+            print("year, month, day")
+            temp_datetime = pd.to_datetime(df[["year", "month", "day"]], errors="coerce")
+
+        # year, month (use first day of the month)
+        elif {"year", "month"}.issubset(df.columns):
+            print("year, month")
+            temp_datetime = pd.to_datetime(df.assign(day=1)[["year", "month", "day"]], errors="coerce")
+
+        # date (+ optional "time")
+        elif "date" in df.columns:
+            print("date")
+            if "time" in df.columns:
+                temp_datetime = pd.to_datetime(
+                    df["date"].astype(str) + " " + df["time"].astype(str),
+                    errors="coerce"
+                )
+            else:
+                temp_datetime = pd.to_datetime(df["date"], errors="coerce")
+
+        # Obsdate
+        elif "Obsdate" in df.columns:
+            temp_datetime = pd.to_datetime(df["Obsdate"], errors="coerce")
+
+        # time_tag
+        elif "time_tag" in df.columns:
+            temp_datetime = pd.to_datetime(df["time_tag"], errors="coerce")
+
+        if temp_datetime is not None:
+            df.insert(0, "datetime", temp_datetime)
+
+            # drop old date / other bs columns
+            removal_columns = ["year", "month", "day", "time", "date", "Obsdate", "time_tag", "fractional_year", "days_since_1932", "decimal_date"]
+            for col in removal_columns:
+                if col in df.columns:
+                    # print(f"Dropping \"{col}\"...")
+                    df = df.drop(columns=[col])
+
+        item["data_frame"] = df
+        normalized.append(item)
+
+    return normalized
 
 if __name__ == '__main__':
-    fetch_data()
+    fetch_data(get_daily_cme_movie_frames=False)
     parsed_data, _ = parse_data()
-    analyzed_data = analyze_data()
-    store_data(analyzed_data)
+    normalized_data = normalize_dates()
+    store_data()
+    #analyzed_data = analyze_data()
