@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.request import urlretrieve
-from sqlalchemy import create_engine, DateTime
+from sqlalchemy import create_engine, DateTime, inspect
 from dotenv import load_dotenv
 import pandas as pd
 import os
@@ -149,14 +149,14 @@ DATA_FLARES = [
 # KP-INDEX
 DATA_KP_INDEX = [
     {
-        "source": "swpc", "format": "json", "name": "week_kp-index",
+        "source": "swpc", "format": "json", "name": "week_kp_index",
         "url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
         "parsing_options": {
             "col_names": ["time_tag", "Kp", "a_running", "station_count"],
             "delimiter": None, "comment": None
         }
     }, {
-        "source": "swpc", "format": "txt", "name": "month_kp-index",
+        "source": "swpc", "format": "txt", "name": "daily_geomagnetic_data",
         "url": "https://services.swpc.noaa.gov/text/daily-geomagnetic-indices.txt",
         "parsing_options": {
             "col_names": [
@@ -168,46 +168,42 @@ DATA_KP_INDEX = [
             "delimiter": "whitespace", "comment": "#", "skip_rows": 2
         }
     }, {
-        "source": "gfz", "format": "txt", "name": "month_kp-ap-index",
+        "source": "gfz", "format": "txt", "name": "month_kp_ap_index",
         "url": "https://kp.gfz.de/app/files/Kp_ap_nowcast.txt",
         "parsing_options": {
             "col_names": [
-                "year", "month", "day", "start_hour", "mid_hour",
+                "year", "month", "day", "hour", "mid_hour",
                 "days_since_1932", "days_mid", "Kp", "ap", "definitive"
             ],
             "delimiter": "whitespace", "comment": "#"
         }
     }, {
-        "source": "gfz", "format": "txt", "name": "month_kp-ap-index-detailed",
+        "source": "gfz", "format": "txt", "name": "month_kp_ap_index_detailed",
         "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_nowcast.txt",
         "parsing_options": {
             "col_names": [
-                "year", "month", "day", "days_since_1932", "days_mid", "Bsr",
-                "dB", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7", "Kp8",
-                "ap1", "ap2", "ap3", "ap4", "ap5", "ap6", "ap7", "ap8",
-                "Ap", "SN", "F107_obs", "F107_adj", "definitive"
+                "year", "month", "day", "hour", "days_since_1932", "days_mid", "Bsr",
+                "dB", "Kp", "ap", "Ap_day", "SN", "F107_obs", "F107_adj", "definitive"
             ],
             "delimiter": "whitespace", "comment": "#"
         }
     }, {
-        "source": "gfz", "format": "txt", "name": "century_kp-ap-index",
+        "source": "gfz", "format": "txt", "name": "century_kp_ap_index",
         "url": "https://kp.gfz.de/app/files/Kp_ap_since_1932.txt",
         "parsing_options": {
             "col_names": [
-                "year", "month", "day", "start_hour", "mid_hour",
+                "year", "month", "day", "hour", "mid_hour",
                 "days_since_1932", "days_mid", "Kp", "ap", "definitive"
             ],
             "delimiter": "whitespace", "comment": "#"
         }
     }, {
-        "source": "gfz", "format": "txt", "name": "century_kp-ap-index-detailed",
+        "source": "gfz", "format": "txt", "name": "century_kp_ap_index_detailed",
         "url": "https://kp.gfz.de/app/files/Kp_ap_Ap_SN_F107_since_1932.txt",
         "parsing_options": {
             "col_names": [
-                "year", "month", "day", "days_since_1932", "days_mid", "Bsr",
-                "dB", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7", "Kp8",
-                "ap1", "ap2", "ap3", "ap4", "ap5", "ap6", "ap7", "ap8",
-                "Ap", "SN", "F107_obs", "F107_adj", "definitive"
+                "year", "month", "day", "hour", "days_since_1932", "days_mid", "Bsr",
+                "dB", "Kp", "ap", "Ap_day", "SN", "F107_obs", "F107_adj", "definitive"
             ],
             "delimiter": "whitespace", "comment": "#"
         }
@@ -504,11 +500,12 @@ def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
                 download_data(data_item["url"]["jfiles2"], downloaded_data=downloaded_data, date=date)
 
 def fetch_data(delete_previous_data=True, get_daily_cme_movie_frames=True):
-    if delete_previous_data: delete_directory(BASE_DIR)
+    if delete_previous_data: delete_directory(os.path.join(BASE_DIR, FETCHING_DATE))
     download_data(DATA_SUNSPOTS, DATA_FLARES, DATA_KP_INDEX, DATA_CME)
-    download_data(get_latest_sun_image_url(DICT_RESOLUTIONS.get("1024x1024px"), DICT_FREQUENCIES.get("AIA 211 Å"), True))
-    download_data(get_latest48h_video_url(frequency=DICT_FREQUENCIES.get("AIA 094 Å")))
-    download_data(get_latest48h_video_url(DICT_RESOLUTIONS.get("512x512px"), DICT_FREQUENCIES.get("AIA 304 Å"), DICT_CORNERS.get("CloseUp"), False))
+    for frequency in DICT_FREQUENCIES.values():
+        download_data(get_latest_sun_image_url(DEFAULT_RESOLUTION, frequency, False))
+        download_data(get_latest_sun_image_url(DEFAULT_RESOLUTION, frequency, True))
+        download_data(get_latest48h_video_url(frequency=frequency))
     if get_daily_cme_movie_frames: download_data(get_daily_cme_movies())
 
 # PARSING
@@ -579,8 +576,41 @@ def pre_process_file(infile):
     elif infile["name"] == "daily_estimated_sunspot_number":
         print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
         outfile = preprocess_daily_estimated_sunspot_number(infile, in_filepath, out_filepath)
+    elif infile["name"] == "month_kp_ap_index_detailed" or infile["name"] == "century_kp_ap_index_detailed":
+        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
+        outfile = preprocess_kp_ap_index(infile, in_filepath, out_filepath)
     else: return infile # file does not need pre-processing
+    return outfile
 
+def preprocess_kp_ap_index(infile, in_filepath, out_filepath):
+    with open(in_filepath) as f:
+        lines = [line.strip() for line in f if not line.startswith("#") and line.strip()]
+
+    hours = [0, 3, 6, 9, 12, 15, 18, 21]
+    new_lines = []
+    for line in lines:
+        parts = line.split()
+        year, month, day = parts[0], parts[1], parts[2]
+        days_since_1932, days_mid, Bsr, dB = parts[3], parts[4], parts[5], parts[6]
+        Kp = parts[7:15]   # Kp1–Kp8
+        ap = parts[15:23]  # ap1–ap8
+        Ap, SN, F107_obs, F107_adj, definitive = parts[23], parts[24], parts[25], parts[26], parts[27]
+
+        # expand into 8 rows
+        for i in range(8):
+            new_line = [
+                year, month, day, str(hours[i]),
+                days_since_1932, days_mid, Bsr, dB,
+                Kp[i], ap[i],
+                Ap, SN, F107_obs, F107_adj, definitive
+            ]
+            new_lines.append(" ".join(new_line))
+
+    with open(out_filepath, "w") as f:
+        f.write("\n".join(new_lines))
+
+    outfile = infile.copy()
+    outfile["name"] += "_processed"
     return outfile
 
 def preprocess_daily_estimated_sunspot_number(infile, in_filepath, out_filepath):
@@ -628,10 +658,20 @@ def store_data():
     for item in normalized_data:
         table_name = item["name"].replace("-", "_")
         df = item["data_frame"]
+        df.replace([" ------- ", " ------ ", " ----- ", " ---- "], None, inplace=True)
+
+        if item["name"] == "cme_catalog_all_processed":
+            for col in df.select_dtypes(include="object").columns:
+                df[col] = df[col].str.replace('*', '', regex=False)
+                if col != "datetime" and col != "remarks" and col != "central_PA":
+                    df[col] = df[col].astype(float)
 
         if list(df.iloc[0, 1:]) == list(df.columns[1:]):
-            df = df.iloc[1:]  # Drop the first row
+            df = df.iloc[1:] # Drop the first row
             df.reset_index(drop=True, inplace=True)
+            for col in df.columns:
+                if col != "datetime":
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
 
         """AVOID SOMETHING LIKE THIS:
         MariaDB [parsed_data]> SELECT * FROM week_kp_index LIMIT 3;
@@ -642,10 +682,16 @@ def store_data():
         | 2025-08-19 00:00:00 | 3.00 | 15        | 8             |
         | 2025-08-19 03:00:00 | 2.00 | 7         | 8             |
         +---------------------+------+-----------+---------------+
-        3 rows in set (0.000 sec)
+        3 rows in set (0.000 sec)   
         """
 
-        df.to_sql(name=table_name, con=ENGINE, if_exists='replace', index=False, chunksize=5000, dtype={"datetime": DateTime()})
+        inspector = inspect(ENGINE)
+        if table_name in inspector.get_table_names():
+            existing = pd.read_sql(f"SELECT datetime FROM {table_name}", ENGINE)
+            df["datetime"] = df["datetime"].dt.tz_localize(None)
+            df_new = df[~df["datetime"].isin(existing["datetime"])]
+        else: df_new = df;
+        df_new.to_sql(name=table_name, con=ENGINE, if_exists='append', index=False, chunksize=5000, dtype={"datetime": DateTime()})
     return
 
 def normalize_dates():
@@ -657,17 +703,17 @@ def normalize_dates():
 
         # year, month, day
         if {"year", "month", "day"}.issubset(df.columns):
-            print("year, month, day")
-            temp_datetime = pd.to_datetime(df[["year", "month", "day"]], errors="coerce")
+            if "hour" in df.columns:
+                temp_datetime = pd.to_datetime(df[["year", "month", "day", "hour"]], errors="coerce")
+            else:
+                temp_datetime = pd.to_datetime(df[["year", "month", "day"]], errors="coerce")
 
         # year, month (use first day of the month)
         elif {"year", "month"}.issubset(df.columns):
-            print("year, month")
             temp_datetime = pd.to_datetime(df.assign(day=1)[["year", "month", "day"]], errors="coerce")
 
         # date (+ optional "time")
         elif "date" in df.columns:
-            print("date")
             if "time" in df.columns:
                 temp_datetime = pd.to_datetime(
                     df["date"].astype(str) + " " + df["time"].astype(str),
@@ -688,7 +734,7 @@ def normalize_dates():
             df.insert(0, "datetime", temp_datetime)
 
             # drop old date / other bs columns
-            removal_columns = ["year", "month", "day", "time", "date", "Obsdate", "time_tag", "fractional_year", "days_since_1932", "decimal_date"]
+            removal_columns = ["year", "month", "day", "hour", "time", "date", "Obsdate", "time_tag", "fractional_year", "days_since_1932", "days_mid", "decimal_date"]
             for col in removal_columns:
                 if col in df.columns:
                     # print(f"Dropping \"{col}\"...")
