@@ -19,6 +19,14 @@ SESSION = requests.Session()
 FETCHING_DATE = datetime.today().strftime("%Y-%m-%d")
 BASE_DIR = "data"
 
+class Colors:
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+
 def fetch_url(url):
     response = SESSION.get(url, timeout=5)
     response.raise_for_status()
@@ -165,7 +173,7 @@ DATA_KP_INDEX = [
                 "Ac", "Kc1", "Kc2", "Kc3", "Kc4", "Kc5", "Kc6", "Kc7", "Kc8",
                 "Ap", "Kp1", "Kp2", "Kp3", "Kp4", "Kp5", "Kp6", "Kp7", "Kp8"
             ],
-            "delimiter": "whitespace", "comment": "#", "skip_rows": 2
+            "delimiter": "|", "comment": "#", "skip_rows": 2
         }
     }, {
         "source": "gfz", "format": "txt", "name": "month_kp_ap_index",
@@ -325,7 +333,7 @@ def retrieve_latest_cme_href_link(url):
             if a["href"][:-1].isdigit():
                 hrefs.append(a["href"][:-1])
         return f"{url}/{max(hrefs)}"
-    except Exception as e: print("Error", e)
+    except Exception as e: print(f"{Colors.FAIL}[Error]{Colors.ENDC}", e)
 
 def get_daily_cme_movies():
     daily_cme_movie = get_latest_available_cme_movie_url()
@@ -347,7 +355,7 @@ def get_daily_cme_movies():
                     redirect_url = content.split("URL=")[1].strip()
                     daily_cme_movie_pages.append(redirect_url)
     except requests.exceptions.RequestException as e:
-        print(e)
+        print(f"{Colors.FAIL}[ERROR]{Colors.ENDC}", e)
 
     cme_daily_movie_pages = {
         "source": daily_cme_movie["source"],
@@ -423,7 +431,7 @@ def crawl_daily_cme_movie_frames(cme_movie_pages, date):
             cme_movie_frames.append(cme_movie_dict)
 
         except requests.exceptions.RequestException as e:
-            print(e)
+            print(f"{Colors.FAIL}[ERROR]{Colors.ENDC}", e)
 
     return cme_movie_frames
 
@@ -443,18 +451,18 @@ def delete_directory(path):
     if os.path.exists(path):
         try:
             shutil.rmtree(path)
-            print("Successfully deleted directory", path)
+            print(f"{Colors.OKGREEN}[OK]{Colors.ENDC} Deleted directory", path)
         except Exception as e:
-            print("Error deleting directory", e)
+            print(f"{Colors.FAIL}[ERROR]{Colors.ENDC}", e)
 
 def create_directory(path, date=FETCHING_DATE):
     path = os.path.join(BASE_DIR, date, path)
     if not os.path.exists(path):
         try:
             os.makedirs(path)
-            print("Successfully created directory", path)
+            print(f"{Colors.OKGREEN}[OK]{Colors.ENDC} Created directory", path)
         except Exception as e:
-            print("Error creating directory", e)
+            print(f"{Colors.FAIL}[ERROR]{Colors.ENDC}", e)
 
 def create_data_directories(*args, date):
     sources = set()
@@ -478,7 +486,7 @@ def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
         if downloaded_data is None: downloaded_data = set()
         for data_item in items:
             if not isinstance(data_item["url"], dict) and data_item["url"] in downloaded_data:
-                print(f"Skipping \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]} ({data_item["url"]}) because it already exists.")
+                print(f"{Colors.WARNING}[WARNING]{Colors.ENDC} Already exists: {data_item["source"]}: \"{data_item["name"]}.{data_item["format"]}\" ({data_item["url"]}) {Colors.WARNING}(SKIPPED){Colors.ENDC}")
                 continue
 
             create_data_directories(data_item, date=date)
@@ -486,15 +494,15 @@ def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
             if isinstance(data_item["url"], str):
                 if data_item.get("folder"): download_path = os.path.join(BASE_DIR, date, data_item["source"], data_item["folder"],f"{data_item["name"]}.{data_item["format"]}")
                 else: download_path = os.path.join(BASE_DIR, date, data_item["source"], f"{data_item["name"]}.{data_item["format"]}")
-                print(f"Downloading \"{data_item["name"]}.{data_item["format"]}\" from {data_item["source"]} ({data_item["url"]}) into {download_path}")
+                print(f"{Colors.OKCYAN}[INFO]{Colors.ENDC} Downloading: {data_item["source"]}: \"{data_item["name"]}.{data_item["format"]}\" ({data_item["url"]}) - {download_path}")
                 try:
                     urlretrieve(data_item["url"], download_path)
                     downloaded_data.add(data_item["url"])
                 except Exception as e:
-                    print(f"Error downloading file: {e}); skipping.")
+                    print(f"{Colors.FAIL}[ERROR]{Colors.ENDC}", e)
 
             elif isinstance(data_item["url"], dict) and data_item["url"].get("jfiles1") and data_item["url"].get("jfiles2"):
-                print(f"Downloading CME movie frames from: {data_item['url']['page']}")
+                print(f"{Colors.OKCYAN}[INFO]{Colors.ENDC}: Downloading: CME Movie Frames ({data_item['url']['page']})")
                 date = data_item["date"]
                 download_data(data_item["url"]["jfiles1"], downloaded_data=downloaded_data, date=date)
                 download_data(data_item["url"]["jfiles2"], downloaded_data=downloaded_data, date=date)
@@ -545,7 +553,7 @@ def parse_file(file):
         else: return None
         file["data_frame"] = df
         return file
-    except Exception as e: print(f"Error parsing file: {e}")
+    except Exception as e: print(f"{Colors.FAIL}[ERROR]{Colors.ENDC}", e)
     return None
 
 def parse_data():
@@ -558,7 +566,7 @@ def parse_data():
             parsed_file = parse_file(unparsed_file)
             if parsed_file:
                 parsed_files.append(parsed_file)
-                print(f"Successfully parsed {parsed_file["name"]}.{parsed_file["format"]}!")
+                print(f"{Colors.OKGREEN}[OK]{Colors.ENDC} Parsed: {parsed_file["name"]}.{parsed_file["format"]}")
                 parsed_file_count += 1
                 continue
         unparsed_files.append(unparsed_file)
@@ -570,16 +578,42 @@ def pre_process_file(infile):
     in_filepath = os.path.join(BASE_DIR, FETCHING_DATE, infile["source"], f"{infile["name"]}.{infile["format"]}")
     out_filepath = os.path.join(BASE_DIR, FETCHING_DATE, infile["source"], f"{infile["name"]}_processed.{infile["format"]}")
 
+    print(f"{Colors.OKCYAN}[INFO]{Colors.ENDC} Pre-processing: {infile["name"]}.{infile["format"]}... ", end='')
+
     if infile["name"] == "cme_catalog_all":
-        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
         outfile = preprocess_cme_catalog_all(infile, in_filepath, out_filepath)
     elif infile["name"] == "daily_estimated_sunspot_number":
-        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
         outfile = preprocess_daily_estimated_sunspot_number(infile, in_filepath, out_filepath)
     elif infile["name"] == "month_kp_ap_index_detailed" or infile["name"] == "century_kp_ap_index_detailed":
-        print(f"Pre-processing {infile["name"]}.{infile["format"]}...")
         outfile = preprocess_kp_ap_index(infile, in_filepath, out_filepath)
-    else: return infile # file does not need pre-processing
+    elif infile["name"] == "daily_geomagnetic_data":
+        outfile = preprocess_daily_geomagnetic_data(infile, in_filepath, out_filepath)
+    else: # file does not need pre-processing
+        print(f"{Colors.WARNING}(SKIPPED){Colors.ENDC}")
+        return infile
+    print(f"{Colors.OKGREEN}(OK){Colors.ENDC}")
+    return outfile
+
+def preprocess_daily_geomagnetic_data(infile, in_filepath, out_filepath):
+    with open(in_filepath) as f:
+        lines = [line.strip() for line in f if line.strip()]
+
+    cleaned_lines = []
+    for line in lines:
+        # Replace sequences like -1-1-1 with space-separated values
+        line = re.sub(r'(-?\d)(?=-\d)', r'\1 ', line)
+        # Collapse multiple spaces into single space
+        line = re.sub(r'\s+', ' ', line)
+        # Replace spaces with "|"
+        line = line.replace(" ", "|")
+
+        cleaned_lines.append(line)
+
+    with open(out_filepath, "w") as f:
+        f.write("\n".join(cleaned_lines))
+
+    outfile = infile.copy()
+    outfile["name"] += "_processed"
     return outfile
 
 def preprocess_kp_ap_index(infile, in_filepath, out_filepath):
@@ -737,7 +771,6 @@ def normalize_dates():
             removal_columns = ["year", "month", "day", "hour", "time", "date", "Obsdate", "time_tag", "fractional_year", "days_since_1932", "days_mid", "decimal_date"]
             for col in removal_columns:
                 if col in df.columns:
-                    # print(f"Dropping \"{col}\"...")
                     df = df.drop(columns=[col])
 
         item["data_frame"] = df
