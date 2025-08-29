@@ -3,6 +3,7 @@ from datetime import datetime
 
 FETCHING_DATE = datetime.today().strftime("%Y-%m-%d")
 BASE_DIR = "data"
+MAX_WORKERS = 20
 
 class Color:
     OKBLUE = '\033[94m'

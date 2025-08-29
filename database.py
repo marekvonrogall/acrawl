@@ -13,7 +13,7 @@ def store_data(normalized_data):
     for item in normalized_data:
         table_name = item["name"].replace("-", "_")
         df = item["data_frame"]
-        df.replace([" ------- ", " ------ ", " ----- ", " ---- "], None, inplace=True)
+        df.replace([" ------- ", " ------ ", " ----- ", " ---- ", "unk", "Unk", "UNK"], None, inplace=True)
 
         if item["name"] == "cme_catalog_all_processed":
             for col in df.select_dtypes(include="object").columns:
