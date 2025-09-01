@@ -1,9 +1,15 @@
+from constants import BASE_DIR, FETCHING_DATE, Color
+from directory import create_directory
 import matplotlib.pyplot as plt
 import pandas as pd
+import os
 
 def analyze_data(normalized_data):
     data_map = {d['name']: d['data_frame'] for d in normalized_data}
     start_date = pd.Timestamp.today() - pd.Timedelta(days=8)
+    outfile_dir = os.path.join("swpc", "plots")
+    outfile_path = os.path.join(BASE_DIR, FETCHING_DATE, outfile_dir, "ssn_mxflares.png")
+    create_directory(outfile_dir)
 
     df_solar = data_map['daily_solar_cycle']
     df_solar['datetime'] = pd.to_datetime(df_solar['datetime']).dt.tz_localize(None)
@@ -26,4 +32,8 @@ def analyze_data(normalized_data):
     plt.ylabel('Sunspot Number')
     plt.grid(True)
     plt.legend()
-    plt.show()
+    plt.savefig(outfile_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"{Color.OKBLUE}[DONE]{Color.ENDC} Matplotlib: Saved SSN M/X-Flare plot - {outfile_path}")
+
