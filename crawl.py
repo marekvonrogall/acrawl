@@ -108,6 +108,7 @@ def get_daily_cme_movies():
 
 def crawl_daily_cme_movie_frames(cme_movie_pages, date):
     cme_movie_frames = []
+    matches_json = []
 
     for page in cme_movie_pages["url"]:
         cme_movie_dict = {
@@ -147,7 +148,8 @@ def crawl_daily_cme_movie_frames(cme_movie_pages, date):
                     frame_format = url[-3:]
                     frame_name = url.rsplit("/",1)[1][:-4]
 
-                    matching_jfiles["path"] = os.path.join(cme_movie_pages["source"], f"{date}_{jfile1_folder}")
+                    matching_jfiles["path"] = [os.path.join(cme_movie_pages["source"], f"{date}_{jfile1_folder}"),
+                                               os.path.join(cme_movie_pages["source"], f"{date}_{jfile2_folder}")]
 
                     jfile = {
                         "source": cme_movie_dict["source"],
@@ -167,16 +169,20 @@ def crawl_daily_cme_movie_frames(cme_movie_pages, date):
                         cme_movie_dict["url"]["jfiles2"].append(jfile)
                         matching_jfiles[jfile2_folder].append(f"{frame_name}.{frame_format}")
                 if matching_jfiles.get("path"):
-                    write_matching_jfiles_to_file(matching_jfiles, date)
+                    matches_json.append(matching_jfiles)
 
             cme_movie_frames.append(cme_movie_dict)
 
         except requests.exceptions.RequestException as e:
             print(f"{Color.FAIL}[ERROR]{Color.ENDC}", e)
 
+    write_matching_jfiles_to_file(matches_json, date)
     return cme_movie_frames
 
-def write_matching_jfiles_to_file(matching_jfiles, date):
-    create_directory(matching_jfiles["path"], date)
-    with open(os.path.join(BASE_DIR, date, f"{matching_jfiles["path"]}/matches.json"), "a") as f:
-        json.dump(matching_jfiles, f)
+def write_matching_jfiles_to_file(matches_json, date):
+    for match in matches_json:
+        for path in match["path"]:
+            create_directory(path, date)
+
+    with open(os.path.join(BASE_DIR, date, f"matches.json"), "a") as f:
+        json.dump(matches_json, f)
