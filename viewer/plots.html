@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sun Plots</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-body">
+      <h1>plots</h1>
+      <div id="plotsContainer"></div>
+      <div class="nav-links" id="navLinks"></div>
+    </div>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const fetching_date = params.get("fetching_date") || "";
+      const cme_date = params.get("cme_date") || "";
+
+      const pages = [
+        { name: "cme", file: "cme.html" },
+        { name: "plots", file: "plots.html" },
+        { name: "sun images", file: "sun_images.html" },
+        { name: "sun videos", file: "sun_videos.html" },
+      ];
+
+      const navDiv = document.getElementById("navLinks");
+      pages.forEach((p) => {
+        const link = document.createElement("a");
+        link.href = `${p.file}?cme_date=${cme_date}&fetching_date=${fetching_date}`;
+        link.textContent = p.name;
+        navDiv.appendChild(link);
+      });
+
+      const plotPaths = [
+        `./../data/${fetching_date}/sidc/plots/daily_sunspot_plot.png`,
+        `./../data/${fetching_date}/sidc/plots/monthly_sunspot_plot.png`,
+        `./../data/${fetching_date}/swpc/plots/ssn_mxflares.png`,
+      ];
+
+      const container = document.getElementById("plotsContainer");
+      plotPaths.forEach((path) => {
+        const img = document.createElement("img");
+        img.src = path;
+        container.appendChild(img);
+      });
+    </script>
+  </body>
+</html>

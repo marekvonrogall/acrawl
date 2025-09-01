@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sun Videos</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-body">
+      <h1>sun (but it moves)</h1>
+      <div id="videosContainer"></div>
+      <div class="nav-links" id="navLinks"></div>
+      <p>(loading them here takes too long)</p>
+    </div>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const fetching_date = params.get("fetching_date") || "";
+      const cme_date = params.get("cme_date") || "";
+
+      // Navigation links
+      const pages = [
+        { name: "cme", file: "cme.html" },
+        { name: "plots", file: "plots.html" },
+        { name: "sun images", file: "sun_images.html" },
+        { name: "sun videos", file: "sun_videos.html" },
+      ];
+
+      const navDiv = document.getElementById("navLinks");
+      pages.forEach((p) => {
+        const link = document.createElement("a");
+        link.href = `${p.file}?cme_date=${cme_date}&fetching_date=${fetching_date}`;
+        link.textContent = p.name;
+        navDiv.appendChild(link);
+      });
+
+      // Load video file links as vertical list
+      async function loadVideos() {
+        try {
+          const response = await fetch(
+            `./../data/${fetching_date}/nasa/48hLatest/`
+          );
+          const htmlText = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(htmlText, "text/html");
+          const files = Array.from(doc.querySelectorAll("a"))
+            .map((a) => a.getAttribute("href"))
+            .filter((f) => f.match(/\.(mp4|ogv)$/i));
+
+          const container = document.getElementById("videosContainer");
+          container.innerHTML = "";
+
+          // Create vertical list
+          const ul = document.createElement("ul");
+          ul.style.listStyle = "none";
+          ul.style.padding = "0";
+
+          files.forEach((file) => {
+            const li = document.createElement("li");
+            li.style.margin = "5px 0";
+            const link = document.createElement("a");
+            link.href = `./../data/${fetching_date}/nasa/48hLatest/${file}`;
+            link.textContent = file;
+            link.target = "_blank";
+            li.appendChild(link);
+            ul.appendChild(li);
+          });
+
+          container.appendChild(ul);
+        } catch (err) {
+          console.error("Failed to load videos:", err);
+        }
+      }
+
+      loadVideos();
+    </script>
+  </body>
+</html>
