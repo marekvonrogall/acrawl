@@ -53,7 +53,7 @@ def parse_data():
             parsed_file = parse_file(unparsed_file)
             if parsed_file:
                 parsed_files.append(parsed_file)
-                print(f"{Color.OKGREEN}[OK]{Color.ENDC} Parsed: {parsed_file["name"]}.{parsed_file["format"]}")
+                print(f"{Color.OKBLUE}[DONE]{Color.ENDC} Parsed: {parsed_file["name"]}.{parsed_file["format"]}")
                 parsed_file_count += 1
                 continue
         unparsed_files.append(unparsed_file)

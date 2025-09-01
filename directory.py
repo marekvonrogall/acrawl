@@ -7,7 +7,7 @@ def delete_directory(path):
     if os.path.exists(path):
         try:
             shutil.rmtree(path)
-            print(f"{Color.OKGREEN}[OK]{Color.ENDC} Deleted directory", path)
+            print(f"{Color.OKGREEN}[OK]{Color.ENDC} Directory: Deleted", path)
         except Exception as e:
             print(f"{Color.FAIL}[ERROR]{Color.ENDC}", e)
 
@@ -16,7 +16,7 @@ def create_directory(path, date=FETCHING_DATE):
     if not os.path.exists(path):
         try:
             os.makedirs(path)
-            print(f"{Color.OKGREEN}[OK]{Color.ENDC} Created directory", path)
+            print(f"{Color.OKGREEN}[OK]{Color.ENDC} Directory: Created", path)
         except Exception as e:
             print(f"{Color.FAIL}[ERROR]{Color.ENDC}", e)
 

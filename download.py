@@ -69,6 +69,6 @@ def _download_file(url, path, downloaded_data):
     try:
         urlretrieve(url, path)
         downloaded_data.add(url)
-        print(f"{Color.OKBLUE}[DONE]{Color.ENDC} Downloaded: {url}")
+        print(f"{Color.OKBLUE}[DONE]{Color.ENDC} Downloaded: {url} - {path}")
     except Exception as e:
         print(f"{Color.FAIL}[ERROR]{Color.ENDC}", e)

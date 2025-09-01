@@ -53,4 +53,5 @@ def store_data(normalized_data):
             df_new = df[~df["datetime"].isin(existing["datetime"])]
         else: df_new = df;
         df_new.to_sql(name=table_name, con=ENGINE, if_exists='append', index=False, chunksize=5000, dtype={"datetime": DateTime()})
+        print(f"{Color.OKBLUE}[DONE]{Color.ENDC} Dataframe: Wrote data to SQL table {table_name}")
     return
