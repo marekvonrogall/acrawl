@@ -6,9 +6,11 @@ from crawl import get_latest_sun_image_url, get_latest48h_video_url, get_daily_c
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 
-def fetch_data(delete_previous_data=True, get_daily_cme_movie_frames=True):
+def fetch_data(delete_previous_data=True):
     if delete_previous_data: delete_directory(FETCHING_DATE)
     download_data(DATA_SUNSPOTS, DATA_FLARES, DATA_KP_INDEX, DATA_CME)
+
+def fetch_media():
     images = []
     videos = []
     for frequency in Frequency:
@@ -17,7 +19,11 @@ def fetch_data(delete_previous_data=True, get_daily_cme_movie_frames=True):
         videos.append(get_latest48h_video_url(frequency=frequency.value))
     download_data(images)
     download_data(videos)
-    if get_daily_cme_movie_frames: download_data(get_daily_cme_movies())
+
+def fetch_cme_movies():
+    cme_date, cme_movie_frames = get_daily_cme_movies()
+    download_data(cme_movie_frames)
+    return cme_date
 
 def download_data(*args, downloaded_data=None, date=FETCHING_DATE):
     tasks = []

@@ -104,7 +104,7 @@ def get_daily_cme_movies():
         "name": "daily_cme_movie_urls",
         "url": daily_cme_movie_pages
     }
-    return crawl_daily_cme_movie_frames(cme_daily_movie_pages, date)
+    return date, crawl_daily_cme_movie_frames(cme_daily_movie_pages, date)
 
 def crawl_daily_cme_movie_frames(cme_movie_pages, date):
     cme_movie_frames = []
