@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CME Viewer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: #111;
+        color: #fff;
+        font-family: Arial, sans-serif;
+        flex-direction: column;
+        text-align: center;
+      }
+      .image-container {
+        display: flex;
+        gap: 20px;
+        margin-top: 10px;
+      }
+      img {
+        max-width: 45vw;
+        max-height: 60vh;
+        border: 2px solid #fff;
+        border-radius: 10px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .controls label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="currentPair">Loading...</h1>
+
+    <div class="controls" id="controls">
+      <label>
+        Time per image (ms):
+        <input type="number" id="timeInput" value="100" min="10" step="10" />
+      </label>
+    </div>
+
+    <div class="image-container">
+      <img id="img1" src="" alt="Image 1" />
+      <img id="img2" src="" alt="Image 2" />
+    </div>
+
+    <div id="currentUrl" style="margin-top: 10px">
+      <a id="urlLink" href="#" target="_blank" style="color: #0af"></a>
+    </div>
+
+    <script>
+      let base_dir = "./data/";
+      const params = new URLSearchParams(window.location.search);
+      const dateParam = params.get("date"); // eg. http://localhost:8000/viewer.html?date=2025-08-17
+
+      if (dateParam) {
+        base_dir += `${dateParam}/`;
+      }
+
+      let data = [];
+      let currentSet = 0;
+      let currentIndex = 0;
+      let intervalId = null;
+      let timePerImage = 100;
+
+      // Load JSON file
+      async function loadData() {
+        try {
+          const response = await fetch(`${base_dir}matches.json`);
+          const rawData = await response.json();
+
+          // Filter out wwaves
+          data = rawData
+            .map((entry) => {
+              entry.skip = Object.keys(entry).includes("wwaves");
+              return entry;
+            })
+            .filter((entry) => !entry.skip);
+
+          if (data.length > 0) {
+            createSequenceButtons();
+            startAnimation();
+          } else {
+            console.error("No valid JSON entries to display!");
+            document.getElementById("currentPair").innerText =
+              "No images to display";
+          }
+        } catch (err) {
+          console.error("Failed to load JSON:", err);
+          document.getElementById("currentPair").innerText =
+            "Failed to load JSON";
+        }
+      }
+
+      // Update images
+      function updateImages() {
+        if (data.length === 0) return;
+
+        const set = data[currentSet];
+        const keys = Object.keys(set).filter((k) => Array.isArray(set[k]));
+        const img1List = set[keys[0]];
+        const img2List = set[keys[1]];
+
+        // Show current list names
+        document.getElementById("currentPair").innerText = `${keys[0]} - ${keys[1]}`;
+
+        const img1Path = `${base_dir}${set.path[0]}/${img1List[currentIndex]}`;
+        const img2Path = `${base_dir}${set.path[1]}/${img2List[currentIndex]}`;
+
+        document.getElementById("img1").src = img1Path;
+        document.getElementById("img2").src = img2Path;
+
+        const urlLink = document.getElementById("urlLink");
+        urlLink.href = set.url;
+        urlLink.textContent = set.url;
+
+        currentIndex++;
+        if (currentIndex >= img1List.length) {
+          currentIndex = 0;
+        }
+      }
+
+      // Start animation with current timePerImage
+      function startAnimation() {
+        if (intervalId) clearInterval(intervalId);
+        intervalId = setInterval(updateImages, timePerImage);
+      }
+
+      // Create buttons to select sequences
+      function createSequenceButtons() {
+        const controlsDiv = document.getElementById("controls");
+        data.forEach((entry, index) => {
+          const keys = Object.keys(entry).filter((k) =>
+            Array.isArray(entry[k])
+          );
+          const button = document.createElement("button");
+          button.textContent = `${keys[0]} - ${keys[1]}`;
+          button.onclick = () => {
+            currentSet = index;
+            currentIndex = 0;
+            startAnimation();
+          };
+          controlsDiv.appendChild(button);
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const timeInput = document.getElementById("timeInput");
+
+        function loadTimeInput() {
+          const val = parseInt(timeInput.value);
+          if (!isNaN(val) && val > 0) {
+            timePerImage = val;
+            startAnimation();
+          }
+        }
+
+        loadData();
+        loadTimeInput();
+
+        timeInput.addEventListener("change", () => {
+          loadTimeInput();
+        });
+      });
+    </script>
+  </body>
+</html>
