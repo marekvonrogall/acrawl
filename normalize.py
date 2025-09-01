@@ -1,3 +1,4 @@
+import warnings; warnings.filterwarnings("ignore")
 import pandas as pd
 
 def normalize_dates(parsed_data):
