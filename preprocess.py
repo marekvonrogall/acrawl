@@ -8,17 +8,12 @@ def pre_process_file(infile):
 
     print(f"{Color.OKCYAN}[INFO]{Color.ENDC} Pre-processing: {infile["name"]}.{infile["format"]}... ", end='')
 
-    if infile["name"] == "cme_catalog_all":
-        outfile = preprocess_cme_catalog_all(infile, in_filepath, out_filepath)
-    elif infile["name"] == "daily_estimated_sunspot_number":
-        outfile = preprocess_daily_estimated_sunspot_number(infile, in_filepath, out_filepath)
-    elif infile["name"] == "month_kp_ap_index_detailed" or infile["name"] == "century_kp_ap_index_detailed":
-        outfile = preprocess_kp_ap_index(infile, in_filepath, out_filepath)
-    elif infile["name"] == "daily_geomagnetic_data":
-        outfile = preprocess_daily_geomagnetic_data(infile, in_filepath, out_filepath)
-    else: # file does not need pre-processing
+    preprocessor = PREPROCESSORS.get(infile["name"])
+    if not preprocessor:
         print(f"{Color.WARNING}(SKIPPED){Color.ENDC}")
         return infile
+
+    outfile = preprocessor(infile, in_filepath, out_filepath)
     print(f"{Color.OKGREEN}(OK){Color.ENDC}")
     return outfile
 
@@ -110,3 +105,11 @@ def preprocess_cme_catalog_all(infile, in_filepath, out_filepath):
     outfile = infile.copy()
     outfile["name"] += "_processed"
     return outfile
+
+PREPROCESSORS = {
+    "cme_catalog_all": preprocess_cme_catalog_all,
+    "daily_estimated_sunspot_number": preprocess_daily_estimated_sunspot_number,
+    "month_kp_ap_index_detailed": preprocess_kp_ap_index,
+    "century_kp_ap_index_detailed": preprocess_kp_ap_index,
+    "daily_geomagnetic_data": preprocess_daily_geomagnetic_data,
+}
