@@ -3,6 +3,7 @@ from constants import Color, FETCHING_DATE, BASE_DIR
 import shutil
 
 def delete_directory(path):
+    path = os.path.join(BASE_DIR, path)
     if os.path.exists(path):
         try:
             shutil.rmtree(path)

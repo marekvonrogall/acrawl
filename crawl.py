@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 import requests
 from constants import Color, BASE_DIR, FETCHING_DATE, Frequency, DEFAULT_FREQUENCY, Resolution, DEFAULT_RESOLUTION, Corner, DEFAULT_CORNER
-from directory import create_directory
+from directory import create_directory, delete_directory
 import re
 import os
 import json
@@ -65,6 +65,8 @@ def get_latest_available_cme_movie_url():
 
     date = year_month_day_cme_url.rsplit("/", 3)
     date = f"{date[1]}-{date[2]}-{date[3]}"
+
+    delete_directory(date)
 
     return {
         "source": "nasa",

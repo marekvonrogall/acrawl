@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 
 def fetch_data(delete_previous_data=True, get_daily_cme_movie_frames=True):
-    if delete_previous_data: delete_directory(os.path.join(BASE_DIR, FETCHING_DATE))
+    if delete_previous_data: delete_directory(FETCHING_DATE)
     download_data(DATA_SUNSPOTS, DATA_FLARES, DATA_KP_INDEX, DATA_CME)
     images = []
     videos = []

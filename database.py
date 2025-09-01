@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 from sqlalchemy import DateTime, inspect
+from constants import Color
 import pandas as pd
 import os
 
@@ -13,6 +14,11 @@ def store_data(normalized_data):
     for item in normalized_data:
         table_name = item["name"].replace("-", "_")
         df = item["data_frame"]
+
+        if df.empty:
+            print(f"{Color.FAIL}[ERROR]{Color.ENDC} Dataframe empty: {item['name']}")
+            continue
+
         df.replace([" ------- ", " ------ ", " ----- ", " ---- ", "unk", "Unk", "UNK"], None, inplace=True)
 
         if item["name"] == "cme_catalog_all_processed":
